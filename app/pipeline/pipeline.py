@@ -1,0 +1,76 @@
+from typing import List, Tuple
+from fastapi import HTTPException
+from app.pipeline.base import Detection
+from app.pipeline import regex_stage, structural_stage, entropy_stage, luhn_stage, code_stage
+from app.config import TIER_BLOCK, TIER_REDACT, TIER_AUDIT, get_block_warning
+
+def _merge_spans(detections: List[Detection]) -> List[Detection]:
+    """Merge overlapping detections so we don't double-redact the same span."""
+    if not detections:
+        return []
+    sorted_d = sorted(detections, key=lambda d: d.start)
+    merged: List[Detection] = [sorted_d[0]]
+    for current in sorted_d[1:]:
+        last = merged[-1]
+        if current.start <= last.end:
+            # Overlapping — extend the previous span, keep highest-confidence type
+            merged[-1] = Detection(
+                start=last.start,
+                end=max(last.end, current.end),
+                type=last.type if last.confidence == "high" else current.type,
+                subtype=last.subtype,
+                confidence="high" if "high" in (last.confidence, current.confidence) else "medium",
+            )
+        else:
+            merged.append(current)
+    return merged
+
+def _classify_tier(detections: List[Detection]) -> str:
+    types = set(d.type for d in detections)
+    if types & TIER_BLOCK:
+        return "BLOCK"
+    if types & TIER_REDACT:
+        return "REDACT"
+    if types:
+        return "AUDIT"
+    return "CLEAN"
+
+def run(text: str) -> Tuple[str, List[Detection], str]:
+    """
+    Run all stages in sequence.
+    Returns (processed_text, list_of_detections, action_tier).
+    """
+    all_detections: List[Detection] = []
+    
+    # Run the O(1) rules engines first
+    all_detections.extend(regex_stage.detect(text))
+    all_detections.extend(code_stage.detect(text))
+    all_detections.extend(luhn_stage.detect(text))
+    all_detections.extend(entropy_stage.detect(text))
+    
+    # Run the deep learning engine (GLiNER2)
+    all_detections.extend(structural_stage.detect(text))
+
+    merged = _merge_spans(all_detections)
+    
+    action = _classify_tier(merged)
+    
+    if action == "BLOCK":
+        blocked_types = [d.type for d in merged if d.type in TIER_BLOCK]
+        primary_type = blocked_types[0] if blocked_types else "code"
+        warning_msg = get_block_warning(primary_type)
+        
+        # We handle the HTTP exception at the router level, but we could also raise here
+        # For clean architecture, we return the action and let main.py handle the response
+        return "", merged, "BLOCK"
+
+    if action == "REDACT":
+        # Replace spans from right to left to preserve indices
+        result = text
+        for d in sorted(merged, key=lambda x: x.start, reverse=True):
+            label = f"[REDACTED:{d.type}]"
+            result = result[: d.start] + label + result[d.end :]
+        return result, merged, "REDACT"
+
+    # AUDIT or CLEAN passes the text through unchanged
+    return text, merged, action

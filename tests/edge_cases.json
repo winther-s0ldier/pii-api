@@ -1,0 +1,2666 @@
+[
+  {
+    "category": "multilingual_pii",
+    "payload": "I recently visited \u0627\u0644\u0642\u0627\u0647\u0631\u0629 and met with some great people from \u0634\u0631\u0643\u0629 \u0627\u0644\u062a\u0643\u0646\u0648\u0644\u0648\u062c\u064a\u0627.",
+    "expected_action": "AUDIT",
+    "id": 1
+  },
+  {
+    "category": "multilingual_pii",
+    "payload": "My friend from \u5317\u4eac told me about an amazing restaurant called \u8001\u5317\u4eac\u70b8\u9171\u9762.",
+    "expected_action": "AUDIT",
+    "id": 2
+  },
+  {
+    "category": "multilingual_pii",
+    "payload": "Did you hear about the new store in \u0422\u0432\u0435\u0440\u044c? It\u2019s called \u041a\u043b\u0430\u0441\u0441\u043d\u044b\u0439 \u041c\u0430\u0433\u0430\u0437\u0438\u043d.",
+    "expected_action": "AUDIT",
+    "id": 3
+  },
+  {
+    "category": "multilingual_pii",
+    "payload": "I received a postcard from \u092e\u0947\u0930\u0947 \u0926\u094b\u0938\u094d\u0924 in \u092e\u0941\u0902\u092c\u0908, and it had stunning images.",
+    "expected_action": "AUDIT",
+    "id": 4
+  },
+  {
+    "category": "multilingual_pii",
+    "payload": "During my travels, I found a lovely caf\u00e9 in \u062c\u062f\u0647 that serves the best coffee.",
+    "expected_action": "AUDIT",
+    "id": 5
+  },
+  {
+    "category": "multilingual_pii",
+    "payload": "The company\u2019s headquarters is located in \u65b0\u52a0\u5761, where they focus on tech innovations.",
+    "expected_action": "AUDIT",
+    "id": 6
+  },
+  {
+    "category": "multilingual_pii",
+    "payload": "My colleague from \u041c\u043e\u0441\u043a\u0432\u0430 shared insights about the local economy in our last meeting.",
+    "expected_action": "AUDIT",
+    "id": 7
+  },
+  {
+    "category": "multilingual_pii",
+    "payload": "I just finished reading a novel by \u090f\u0915 \u092a\u094d\u0930\u0938\u093f\u0926\u094d\u0927 \u0932\u0947\u0916\u0915 from \u0926\u093f\u0932\u094d\u0932\u0940. It was captivating!",
+    "expected_action": "CLEAN",
+    "id": 8
+  },
+  {
+    "category": "multilingual_pii",
+    "payload": "We had a family reunion in \u0627\u0644\u0631\u064a\u0627\u0636 last summer, and it was a blast.",
+    "expected_action": "AUDIT",
+    "id": 9
+  },
+  {
+    "category": "multilingual_pii",
+    "payload": "My travel itinerary includes visiting the Forbidden City in \u6545\u5bab, it\u2019s on my bucket list.",
+    "expected_action": "AUDIT",
+    "id": 10
+  },
+  {
+    "category": "multilingual_pii",
+    "payload": "I can\u2019t believe how much I enjoyed the concert in \u0421\u0430\u043d\u043a\u0442-\u041f\u0435\u0442\u0435\u0440\u0431\u0443\u0440\u0433 last night!",
+    "expected_action": "AUDIT",
+    "id": 11
+  },
+  {
+    "category": "multilingual_pii",
+    "payload": "Have you ever tried the street food in \u091a\u0902\u0921\u0940\u0917\u0922\u093c? It\u2019s absolutely delicious!",
+    "expected_action": "CLEAN",
+    "id": 12
+  },
+  {
+    "category": "multilingual_pii",
+    "payload": "My favorite dish from that restaurant in \u0634\u064a\u0631\u0627\u0632 is definitely their kebab.",
+    "expected_action": "AUDIT",
+    "id": 13
+  },
+  {
+    "category": "multilingual_pii",
+    "payload": "We discussed plans to expand our services in \u4e0a\u6d77 during the last conference.",
+    "expected_action": "AUDIT",
+    "id": 14
+  },
+  {
+    "category": "multilingual_pii",
+    "payload": "I still remember the time we celebrated in \u041d\u043e\u0432\u043e\u0440\u043e\u0441\u0441\u0438\u0439\u0441\u043a, it was unforgettable.",
+    "expected_action": "AUDIT",
+    "id": 15
+  },
+  {
+    "category": "multilingual_pii",
+    "payload": "I received an award from \u090f\u0915 \u0938\u094d\u0925\u093e\u0928\u0940\u092f \u0938\u0902\u0917\u0920\u0928 in \u092c\u0947\u0902\u0917\u0932\u0941\u0930\u0941 for my community service.",
+    "expected_action": "CLEAN",
+    "id": 16
+  },
+  {
+    "category": "multilingual_pii",
+    "payload": "There\u2019s a beautiful park in \u062a\u0648\u0646\u0633 that I highly recommend visiting when you\u2019re there.",
+    "expected_action": "AUDIT",
+    "id": 17
+  },
+  {
+    "category": "multilingual_pii",
+    "payload": "My travel buddy speaks fluent \u6c49\u8bed, which has been helpful during our trip.",
+    "expected_action": "AUDIT",
+    "id": 18
+  },
+  {
+    "category": "multilingual_pii",
+    "payload": "I learned a lot from the seminar held in \u0411\u0438\u0448\u043a\u0435\u043a last week about sustainable practices.",
+    "expected_action": "AUDIT",
+    "id": 19
+  },
+  {
+    "category": "multilingual_pii",
+    "payload": "My aunt lives in \u062d\u0644\u0628 and she always sends me the best spices.",
+    "expected_action": "AUDIT",
+    "id": 20
+  },
+  {
+    "category": "international_formats",
+    "payload": "During our chat, she mentioned her UK National Insurance Number was AB123456C, which she uses for various applications.",
+    "expected_action": "CLEAN",
+    "id": 21
+  },
+  {
+    "category": "international_formats",
+    "payload": "Can you remind me of your Aadhar number? I think you said it was 1234 5678 9012, but I forgot to save it.",
+    "expected_action": "REDACT",
+    "id": 22
+  },
+  {
+    "category": "international_formats",
+    "payload": "I just got my new CPF, it\u2019s 123.456.789-09, and I can't wait to use it for my taxes!",
+    "expected_action": "REDACT",
+    "id": 23
+  },
+  {
+    "category": "international_formats",
+    "payload": "In our last meeting, I recall you said your phone number is +44 20 7946 0958, right?",
+    "expected_action": "AUDIT",
+    "id": 24
+  },
+  {
+    "category": "international_formats",
+    "payload": "My friend from Brazil told me that her CPF number, which is 987.654.321-00, helps her with banking.",
+    "expected_action": "REDACT",
+    "id": 25
+  },
+  {
+    "category": "international_formats",
+    "payload": "While discussing travel, he shared his Indian Aadhar number, which he wrote down as 2222 3333 4444.",
+    "expected_action": "REDACT",
+    "id": 26
+  },
+  {
+    "category": "international_formats",
+    "payload": "I saw on the company chat that someone posted their UK National Insurance Number: QQ123456B. Is that okay?",
+    "expected_action": "CLEAN",
+    "id": 27
+  },
+  {
+    "category": "international_formats",
+    "payload": "In the group email, someone accidentally included their phone number, which is +91-98765 43210. I hope that doesn't cause issues.",
+    "expected_action": "AUDIT",
+    "id": 28
+  },
+  {
+    "category": "international_formats",
+    "payload": "They keep asking for my Aadhar number at the bank, and I think I told them it was 1111 2222 3333.",
+    "expected_action": "REDACT",
+    "id": 29
+  },
+  {
+    "category": "international_formats",
+    "payload": "My colleague mentioned that for his tax filing, he needs to provide his CPF: 123.456.789-00, which he got last year.",
+    "expected_action": "REDACT",
+    "id": 30
+  },
+  {
+    "category": "international_formats",
+    "payload": "The customer service rep asked me for my UK National Insurance Number, which I had to repeat as AB987654D.",
+    "expected_action": "CLEAN",
+    "id": 31
+  },
+  {
+    "category": "international_formats",
+    "payload": "I overheard someone talking about their phone number, they said it starts with +44 7911 123456. Can you believe that?",
+    "expected_action": "AUDIT",
+    "id": 32
+  },
+  {
+    "category": "international_formats",
+    "payload": "During our call, I noted down their Aadhar number, which was shared as 5555 6666 7777. I hope it stays confidential.",
+    "expected_action": "REDACT",
+    "id": 33
+  },
+  {
+    "category": "international_formats",
+    "payload": "While filling out the form, I noticed they asked for a CPF, and I remembered mine as 321.654.987-00.",
+    "expected_action": "CLEAN",
+    "id": 34
+  },
+  {
+    "category": "international_formats",
+    "payload": "In an earlier chat, I saw someone mention their National Insurance Number, it was like AB987654C, right?",
+    "expected_action": "CLEAN",
+    "id": 35
+  },
+  {
+    "category": "international_formats",
+    "payload": "A friend texted me their phone number, which is +55 11 91234-5678, and I just saved it.",
+    "expected_action": "AUDIT",
+    "id": 36
+  },
+  {
+    "category": "international_formats",
+    "payload": "I need to renew my Aadhar card, and I remember the number was 4444 5555 6666. Do you know how to do that?",
+    "expected_action": "REDACT",
+    "id": 37
+  },
+  {
+    "category": "international_formats",
+    "payload": "The HR department asked for my CPF, and I had to dig through my notes to find it: 999.888.777-66.",
+    "expected_action": "AUDIT",
+    "id": 38
+  },
+  {
+    "category": "international_formats",
+    "payload": "Just yesterday, my colleague from London asked if I had my NI number handy, mine is AB654321D.",
+    "expected_action": "REDACT",
+    "id": 39
+  },
+  {
+    "category": "international_formats",
+    "payload": "I had a conversation with my cousin, and he mentioned his phone number was +91 87654 32100. I hope I remember it right.",
+    "expected_action": "AUDIT",
+    "id": 40
+  },
+  {
+    "category": "contextual_ambiguity_org_vs_person",
+    "payload": "I had a conversation with John Deere about the new tractor models they are releasing next year.",
+    "expected_action": "AUDIT",
+    "id": 41
+  },
+  {
+    "category": "contextual_ambiguity_org_vs_person",
+    "payload": "The invitation to the gala from Mary Kay was a lovely surprise in my inbox today.",
+    "expected_action": "AUDIT",
+    "id": 42
+  },
+  {
+    "category": "contextual_ambiguity_org_vs_person",
+    "payload": "Just finished reading about the latest innovations from Dell; I wonder if Mr. Dell is involved in them personally.",
+    "expected_action": "AUDIT",
+    "id": 43
+  },
+  {
+    "category": "contextual_ambiguity_org_vs_person",
+    "payload": "I bumped into a friend at the Starbucks headquarters, and we had a great chat over coffee.",
+    "expected_action": "AUDIT",
+    "id": 44
+  },
+  {
+    "category": "contextual_ambiguity_org_vs_person",
+    "payload": "Did you hear about the new policies being implemented by the team at Wells Fargo? I hope they listen to Mary.",
+    "expected_action": "AUDIT",
+    "id": 45
+  },
+  {
+    "category": "contextual_ambiguity_org_vs_person",
+    "payload": "I can't believe that Susan B. Anthony was involved in such a major financial institution!",
+    "expected_action": "AUDIT",
+    "id": 46
+  },
+  {
+    "category": "contextual_ambiguity_org_vs_person",
+    "payload": "I received an email from the Johnson & Johnson department regarding my health insurance.",
+    "expected_action": "AUDIT",
+    "id": 47
+  },
+  {
+    "category": "contextual_ambiguity_org_vs_person",
+    "payload": "It's interesting how often we hear from the Ford team during our discussions about electric vehicles, especially from Mr. Ford.",
+    "expected_action": "AUDIT",
+    "id": 48
+  },
+  {
+    "category": "contextual_ambiguity_org_vs_person",
+    "payload": "Last week, I met with the representatives from the Coca-Cola company and also ran into my old college buddy, Cola.",
+    "expected_action": "AUDIT",
+    "id": 49
+  },
+  {
+    "category": "contextual_ambiguity_org_vs_person",
+    "payload": "I watched a documentary on the impact of Tesla, and it prompted me to reach out to my friend, Tesla.",
+    "expected_action": "AUDIT",
+    "id": 50
+  },
+  {
+    "category": "contextual_ambiguity_org_vs_person",
+    "payload": "When I called to discuss the new project at the Oracle office, I unexpectedly spoke to Oracle herself.",
+    "expected_action": "AUDIT",
+    "id": 51
+  },
+  {
+    "category": "contextual_ambiguity_org_vs_person",
+    "payload": "The latest report from the Morgan Stanley team hinted at big changes, and I thought of my friend Morgan.",
+    "expected_action": "AUDIT",
+    "id": 52
+  },
+  {
+    "category": "contextual_ambiguity_org_vs_person",
+    "payload": "I attended a seminar hosted by the American Express group, where I met an inspiring woman named Express.",
+    "expected_action": "AUDIT",
+    "id": 53
+  },
+  {
+    "category": "contextual_ambiguity_org_vs_person",
+    "payload": "There's a rumor that the new CEO of Target will be a person named Target, which sounds too good to be true.",
+    "expected_action": "AUDIT",
+    "id": 54
+  },
+  {
+    "category": "contextual_ambiguity_org_vs_person",
+    "payload": "I was surprised to learn that the Wells team is led by someone named Wells; what a coincidence!",
+    "expected_action": "AUDIT",
+    "id": 55
+  },
+  {
+    "category": "contextual_ambiguity_org_vs_person",
+    "payload": "Chatting with the folks at the LinkedIn office was great, especially after hearing from a colleague named Link.",
+    "expected_action": "AUDIT",
+    "id": 56
+  },
+  {
+    "category": "contextual_ambiguity_org_vs_person",
+    "payload": "I received feedback from the team at Home Depot, just as my friend named Home dropped by.",
+    "expected_action": "AUDIT",
+    "id": 57
+  },
+  {
+    "category": "contextual_ambiguity_org_vs_person",
+    "payload": "While discussing the latest app from Slack, I remembered my buddy Slacker who always avoids work.",
+    "expected_action": "AUDIT",
+    "id": 58
+  },
+  {
+    "category": "contextual_ambiguity_org_vs_person",
+    "payload": "I had a pleasant chat with the team from the global firm Deloitte, and my neighbor Dale was also around.",
+    "expected_action": "AUDIT",
+    "id": 59
+  },
+  {
+    "category": "contextual_ambiguity_org_vs_person",
+    "payload": "It was funny to see how the new marketing strategy by the team at Chase was linked to my old friend Chase.",
+    "expected_action": "AUDIT",
+    "id": 60
+  },
+  {
+    "category": "informal_typos_pii",
+    "payload": "Hey, can you send me your emial at the new adress we talked about?",
+    "expected_action": "CLEAN",
+    "id": 61
+  },
+  {
+    "category": "informal_typos_pii",
+    "payload": "I think my phn number is wrong in my profile, let me check!",
+    "expected_action": "CLEAN",
+    "id": 62
+  },
+  {
+    "category": "informal_typos_pii",
+    "payload": "Just realized I sent my last email to the wrong adress, so sorry!",
+    "expected_action": "CLEAN",
+    "id": 63
+  },
+  {
+    "category": "informal_typos_pii",
+    "payload": "Can you remind me what your tel number was? I lost it in my notes.",
+    "expected_action": "CLEAN",
+    "id": 64
+  },
+  {
+    "category": "informal_typos_pii",
+    "payload": "My bad! I thought I updated my emial to the one you texted me!",
+    "expected_action": "CLEAN",
+    "id": 65
+  },
+  {
+    "category": "informal_typos_pii",
+    "payload": "I forgot to mention my new phonenumber after changing jobs.",
+    "expected_action": "CLEAN",
+    "id": 66
+  },
+  {
+    "category": "informal_typos_pii",
+    "payload": "Hey, just checking if you got my last message with the right adress?",
+    "expected_action": "CLEAN",
+    "id": 67
+  },
+  {
+    "category": "informal_typos_pii",
+    "payload": "Oops! I accidentally wrote my old emil instead of the new one.",
+    "expected_action": "AUDIT",
+    "id": 68
+  },
+  {
+    "category": "informal_typos_pii",
+    "payload": "You can reach me at my phne number if you need to talk!",
+    "expected_action": "CLEAN",
+    "id": 69
+  },
+  {
+    "category": "informal_typos_pii",
+    "payload": "I think my address is still the same, but let me double check!",
+    "expected_action": "CLEAN",
+    "id": 70
+  },
+  {
+    "category": "informal_typos_pii",
+    "payload": "My work emial is different now, it's not the same as before.",
+    "expected_action": "CLEAN",
+    "id": 71
+  },
+  {
+    "category": "informal_typos_pii",
+    "payload": "Can you just text me your phn number one more time?",
+    "expected_action": "CLEAN",
+    "id": 72
+  },
+  {
+    "category": "informal_typos_pii",
+    "payload": "I need to update you with my new adress for the package.",
+    "expected_action": "CLEAN",
+    "id": 73
+  },
+  {
+    "category": "informal_typos_pii",
+    "payload": "I sent you my emial in the last chat, did you get it?",
+    "expected_action": "CLEAN",
+    "id": 74
+  },
+  {
+    "category": "informal_typos_pii",
+    "payload": "If you want to call me, my phonenumber is still the same.",
+    "expected_action": "CLEAN",
+    "id": 75
+  },
+  {
+    "category": "informal_typos_pii",
+    "payload": "I think I included the wrong adress in the invite I sent out.",
+    "expected_action": "CLEAN",
+    "id": 76
+  },
+  {
+    "category": "informal_typos_pii",
+    "payload": "Let me know if my old emial still works for you!",
+    "expected_action": "CLEAN",
+    "id": 77
+  },
+  {
+    "category": "informal_typos_pii",
+    "payload": "Can you check if my phn number is on the contact list?",
+    "expected_action": "CLEAN",
+    "id": 78
+  },
+  {
+    "category": "informal_typos_pii",
+    "payload": "I might have sent the meeting link to the wrong adress by mistake.",
+    "expected_action": "CLEAN",
+    "id": 79
+  },
+  {
+    "category": "informal_typos_pii",
+    "payload": "Oops, I meant to type my new emial, not the old one.",
+    "expected_action": "CLEAN",
+    "id": 80
+  },
+  {
+    "category": "asr_transcripts_spelled_numbers",
+    "payload": "During our conversation, I mentioned three instances where we faced challenges, and you said it was like a walk in the park, right? Well, let\u2019s not forget about five surprises that came out of the blue.",
+    "expected_action": "CLEAN",
+    "id": 81
+  },
+  {
+    "category": "asr_transcripts_spelled_numbers",
+    "payload": "In terms of our budget, we allocated one hundred dollars for marketing, but I think we need to reconsider that figure, don\u2019t you think? Maybe something closer to four hundred would work.",
+    "expected_action": "CLEAN",
+    "id": 82
+  },
+  {
+    "category": "asr_transcripts_spelled_numbers",
+    "payload": "You know, back in the day, we used to say that a penny saved is a penny earned, but that was before we realized five dollars could buy a lot more than it used to.",
+    "expected_action": "CLEAN",
+    "id": 83
+  },
+  {
+    "category": "asr_transcripts_spelled_numbers",
+    "payload": "Yesterday, I was reading about the seven wonders of the ancient world, and it struck me that they were all built more than two thousand years ago.",
+    "expected_action": "CLEAN",
+    "id": 84
+  },
+  {
+    "category": "asr_transcripts_spelled_numbers",
+    "payload": "I had a dream last night, and in that dream, there were eight flying elephants and a talking cat that kept repeating nine lives, which was quite bizarre.",
+    "expected_action": "CLEAN",
+    "id": 85
+  },
+  {
+    "category": "asr_transcripts_spelled_numbers",
+    "payload": "My friend told me that twelve is a significant number in many cultures, and I couldn't help but think about how it relates to our project timeline of twenty weeks.",
+    "expected_action": "CLEAN",
+    "id": 86
+  },
+  {
+    "category": "asr_transcripts_spelled_numbers",
+    "payload": "It's funny how life works. One day you\u2019re up, and the next, you\u2019re down. I remember that time when I was stuck in traffic for an hour and a half just to buy three donuts.",
+    "expected_action": "CLEAN",
+    "id": 87
+  },
+  {
+    "category": "asr_transcripts_spelled_numbers",
+    "payload": "In my opinion, four seasons is just not enough for someone who loves variety. I often wish there were eleven seasons instead!",
+    "expected_action": "CLEAN",
+    "id": 88
+  },
+  {
+    "category": "asr_transcripts_spelled_numbers",
+    "payload": "They say that finding true happiness is as hard as counting to twenty without making a mistake. I, however, have found it in the simple things.",
+    "expected_action": "CLEAN",
+    "id": 89
+  },
+  {
+    "category": "asr_transcripts_spelled_numbers",
+    "payload": "I recently discovered that five is the number of senses we have, which makes it interesting to consider how many experiences we truly miss.",
+    "expected_action": "CLEAN",
+    "id": 90
+  },
+  {
+    "category": "asr_transcripts_spelled_numbers",
+    "payload": "Let\u2019s review our findings; I\u2019d say we came up with a dozen solutions, but only two were really practical. Can you believe that?",
+    "expected_action": "CLEAN",
+    "id": 91
+  },
+  {
+    "category": "asr_transcripts_spelled_numbers",
+    "payload": "I recall vividly the time when I tried to explain the concept of infinity to my niece, who was just six years old back then. She thought it was a number beyond ten!",
+    "expected_action": "AUDIT",
+    "id": 92
+  },
+  {
+    "category": "asr_transcripts_spelled_numbers",
+    "payload": "While chatting with my coworker, I jokingly said that if I had a dollar for every time I heard the word \u2018five\u2019, I\u2019d be rich by now!",
+    "expected_action": "AUDIT",
+    "id": 93
+  },
+  {
+    "category": "asr_transcripts_spelled_numbers",
+    "payload": "During our last meeting, I made a point about how twenty-four hours can sometimes feel like just a few minutes, especially when you\u2019re busy.",
+    "expected_action": "CLEAN",
+    "id": 94
+  },
+  {
+    "category": "asr_transcripts_spelled_numbers",
+    "payload": "If only we could gather the courage to ask the seven questions that really matter, perhaps we\u2019d find the answers we seek.",
+    "expected_action": "CLEAN",
+    "id": 95
+  },
+  {
+    "category": "asr_transcripts_spelled_numbers",
+    "payload": "When it comes down to it, I believe that three is the magic number for teamwork. It\u2019s just the right amount to keep things dynamic.",
+    "expected_action": "CLEAN",
+    "id": 96
+  },
+  {
+    "category": "asr_transcripts_spelled_numbers",
+    "payload": "You know, I was reminiscing about that time we stumbled upon nine hidden treasures in the attic, each with its own story to tell.",
+    "expected_action": "CLEAN",
+    "id": 97
+  },
+  {
+    "category": "asr_transcripts_spelled_numbers",
+    "payload": "Can you imagine a world where every child learns to count to fifteen before they even start school? That would be revolutionary!",
+    "expected_action": "CLEAN",
+    "id": 98
+  },
+  {
+    "category": "asr_transcripts_spelled_numbers",
+    "payload": "I think it\u2019s fascinating how in the animal kingdom, there are five senses that guide their survival instincts, much like in our own lives.",
+    "expected_action": "AUDIT",
+    "id": 99
+  },
+  {
+    "category": "asr_transcripts_spelled_numbers",
+    "payload": "Last week, I watched a documentary about the ten most influential people in history, and I couldn\u2019t help but wonder who would be on that list in a hundred years.",
+    "expected_action": "CLEAN",
+    "id": 100
+  },
+  {
+    "category": "obfuscated_code_bash",
+    "payload": "I was just reading some old scripts and came across this: $(echo -e \"\u007f\" | base64 -d) && (echo \"Hello\"; (echo \"World\"))",
+    "expected_action": "BLOCK",
+    "id": 101
+  },
+  {
+    "category": "obfuscated_code_bash",
+    "payload": "Can you believe it? I found this in the logs: $(python3 -c 'print(\"$(echo -e \"\\x68\\x65\\x6c\\x6c\\x6f\")\")')",
+    "expected_action": "BLOCK",
+    "id": 102
+  },
+  {
+    "category": "obfuscated_code_bash",
+    "payload": "My friend sent me a code snippet: $((echo \"$(echo \"Hello\" | tr '[:lower:]' '[:upper:]')\") && echo \"Done\") )",
+    "expected_action": "BLOCK",
+    "id": 103
+  },
+  {
+    "category": "obfuscated_code_bash",
+    "payload": "In a chat, someone wrote: (echo \"$(echo -e \"\u007f\")\" && echo \"Test\")",
+    "expected_action": "BLOCK",
+    "id": 104
+  },
+  {
+    "category": "obfuscated_code_bash",
+    "payload": "I stumbled upon this bash trick: $(echo \"$(printf '%b' '\t')\")",
+    "expected_action": "BLOCK",
+    "id": 105
+  },
+  {
+    "category": "obfuscated_code_bash",
+    "payload": "This was in a forum post: $(echo \"\u007f\" | base64 | base64 -d) && echo \"End\"",
+    "expected_action": "BLOCK",
+    "id": 106
+  },
+  {
+    "category": "obfuscated_code_bash",
+    "payload": "Check out this clever usage: $(bash -c 'echo \"\u007f\"') && echo \"Complete\"",
+    "expected_action": "BLOCK",
+    "id": 107
+  },
+  {
+    "category": "obfuscated_code_bash",
+    "payload": "I found this while debugging: $(echo \"$(echo \"Hello\" | rev)\") && echo \"Finished\"",
+    "expected_action": "BLOCK",
+    "id": 108
+  },
+  {
+    "category": "obfuscated_code_bash",
+    "payload": "Can you decode this for me? echo \"$(perl -e 'print pack(\"H*\", \"48656c6c6f\")')\"",
+    "expected_action": "BLOCK",
+    "id": 109
+  },
+  {
+    "category": "obfuscated_code_bash",
+    "payload": "A colleague shared this: $(echo -n \"Hello\" | base64 | rev | base64 -d) && echo \"Success\"",
+    "expected_action": "BLOCK",
+    "id": 110
+  },
+  {
+    "category": "obfuscated_code_bash",
+    "payload": "I heard about this trick: $(echo \"\u007f\" | xxd -r -p) && echo \"Complete\"",
+    "expected_action": "BLOCK",
+    "id": 111
+  },
+  {
+    "category": "obfuscated_code_bash",
+    "payload": "This was shared in a group: (echo \"$(echo '$(uname -a)')\") && echo \"System Info\"",
+    "expected_action": "BLOCK",
+    "id": 112
+  },
+  {
+    "category": "obfuscated_code_bash",
+    "payload": "I came across this in a script: $(echo -e \"$(printf 'Hello\nWorld')\")",
+    "expected_action": "BLOCK",
+    "id": 113
+  },
+  {
+    "category": "obfuscated_code_bash",
+    "payload": "Saw this in a code review: (echo \"\u007f\" | sed 's/.*/$(echo \"Hello\")/') && echo \"Done\"",
+    "expected_action": "BLOCK",
+    "id": 114
+  },
+  {
+    "category": "obfuscated_code_bash",
+    "payload": "I encountered this in a terminal: $(echo \"Test\" | awk '{print $1}') && echo \"Finished\"",
+    "expected_action": "BLOCK",
+    "id": 115
+  },
+  {
+    "category": "obfuscated_code_bash",
+    "payload": "Did you see this snippet? $(echo \"$(cat /etc/passwd | head -n 1)\")",
+    "expected_action": "BLOCK",
+    "id": 116
+  },
+  {
+    "category": "obfuscated_code_bash",
+    "payload": "Check this out: $(echo \"$(echo \"Hello\" | tr '[:lower:]' '[:upper:]')\")",
+    "expected_action": "BLOCK",
+    "id": 117
+  },
+  {
+    "category": "obfuscated_code_bash",
+    "payload": "I saw this clever trick: $(echo \"\u007f\" | bash -c 'cat') && echo \"Output\"",
+    "expected_action": "BLOCK",
+    "id": 118
+  },
+  {
+    "category": "obfuscated_code_bash",
+    "payload": "Someone posted this: $(awk '{print $1}' <<< \"Hello World\") && echo \"Complete\"",
+    "expected_action": "BLOCK",
+    "id": 119
+  },
+  {
+    "category": "obfuscated_code_bash",
+    "payload": "I was examining some scripts and found: $(echo \"$(echo \"Hello, World!\" | cut -d, -f1)\")",
+    "expected_action": "BLOCK",
+    "id": 120
+  },
+  {
+    "category": "obfuscated_code_sql",
+    "payload": "Hey, did you see the new database schema? I was thinking of something like: SELECT * FROM users WHERE id = (SELECT MAX(id) FROM users UNION SELECT 1, 'hacked' AS name, @@version);",
+    "expected_action": "BLOCK",
+    "id": 121
+  },
+  {
+    "category": "obfuscated_code_sql",
+    "payload": "In our last meeting, I overheard someone mention a delay tactic: WAITFOR DELAY '00:00:10'; SELECT user FROM accounts WHERE active = 1;",
+    "expected_action": "BLOCK",
+    "id": 122
+  },
+  {
+    "category": "obfuscated_code_sql",
+    "payload": "Just a thought, if we were to optimize our queries, we could try using this: SELECT name FROM employees WHERE department_id IN (SELECT department_id FROM departments WHERE name = 'HR' UNION ALL SELECT NULL);",
+    "expected_action": "CLEAN",
+    "id": 123
+  },
+  {
+    "category": "obfuscated_code_sql",
+    "payload": "When planning our next project, we could use a complex join like this: SELECT * FROM orders WHERE order_id = (SELECT order_id FROM order_details UNION SELECT 1, 'malicious' AS item);",
+    "expected_action": "BLOCK",
+    "id": 124
+  },
+  {
+    "category": "obfuscated_code_sql",
+    "payload": "I was reading about the importance of data integrity and thought: SELECT username FROM accounts WHERE user_id = (SELECT id FROM (SELECT id FROM users) AS temp WHERE 1=1 UNION SELECT 'admin');",
+    "expected_action": "BLOCK",
+    "id": 125
+  },
+  {
+    "category": "obfuscated_code_sql",
+    "payload": "In a side conversation, someone mentioned using multiple subqueries: SELECT * FROM products WHERE price < (SELECT AVG(price) FROM products WHERE category = 'electronics' UNION SELECT 0);",
+    "expected_action": "BLOCK",
+    "id": 126
+  },
+  {
+    "category": "obfuscated_code_sql",
+    "payload": "For fun, I tried this: SELECT * FROM sessions WHERE session_id = (SELECT session_id FROM (SELECT session_id FROM user_sessions) AS inner_query UNION SELECT 'fake_id');",
+    "expected_action": "BLOCK",
+    "id": 127
+  },
+  {
+    "category": "obfuscated_code_sql",
+    "payload": "You know, if I were to access sensitive data, I might use something like: SELECT first_name FROM staff WHERE id IN (SELECT id FROM users WHERE active = 1 UNION SELECT NULL);",
+    "expected_action": "BLOCK",
+    "id": 128
+  },
+  {
+    "category": "obfuscated_code_sql",
+    "payload": "I wonder how deep we can nest our queries? Maybe like this: SELECT * FROM transactions WHERE user_id = (SELECT user_id FROM accounts UNION SELECT 1);",
+    "expected_action": "BLOCK",
+    "id": 129
+  },
+  {
+    "category": "obfuscated_code_sql",
+    "payload": "In a casual chat, I mentioned: SELECT address FROM clients WHERE client_id = (SELECT client_id FROM (SELECT client_id FROM clients) AS sub UNION SELECT 1);",
+    "expected_action": "BLOCK",
+    "id": 130
+  },
+  {
+    "category": "obfuscated_code_sql",
+    "payload": "Isn't it interesting how we can manipulate queries? Like: SELECT * FROM data WHERE info = (SELECT info FROM records UNION SELECT 'hacked');",
+    "expected_action": "BLOCK",
+    "id": 131
+  },
+  {
+    "category": "obfuscated_code_sql",
+    "payload": "I was thinking, what if we did something like: SELECT * FROM users WHERE user_id = (SELECT user_id FROM (SELECT user_id FROM users) AS inner UNION SELECT 'malicious');",
+    "expected_action": "BLOCK",
+    "id": 132
+  },
+  {
+    "category": "obfuscated_code_sql",
+    "payload": "While brainstorming, someone suggested: SELECT email FROM subscribers WHERE id = (SELECT id FROM (SELECT id FROM users) AS temp UNION SELECT 0);",
+    "expected_action": "BLOCK",
+    "id": 133
+  },
+  {
+    "category": "obfuscated_code_sql",
+    "payload": "I had a wild idea about accessing data: SELECT * FROM reports WHERE report_id = (SELECT report_id FROM (SELECT report_id FROM reports) AS inner UNION SELECT 'fake_report');",
+    "expected_action": "BLOCK",
+    "id": 134
+  },
+  {
+    "category": "obfuscated_code_sql",
+    "payload": "Imagine if we could combine results like this: SELECT * FROM feedback WHERE user_id IN (SELECT user_id FROM users UNION SELECT 1);",
+    "expected_action": "BLOCK",
+    "id": 135
+  },
+  {
+    "category": "obfuscated_code_sql",
+    "payload": "Just a random thought: SELECT * FROM events WHERE event_id = (SELECT event_id FROM (SELECT event_id FROM events) AS inner UNION SELECT 'malicious');",
+    "expected_action": "BLOCK",
+    "id": 136
+  },
+  {
+    "category": "obfuscated_code_sql",
+    "payload": "What if we tried to exploit delays? Like this: WAITFOR DELAY '00:00:05'; SELECT * FROM transactions WHERE transaction_id = (SELECT MAX(transaction_id) FROM transactions);",
+    "expected_action": "BLOCK",
+    "id": 137
+  },
+  {
+    "category": "obfuscated_code_sql",
+    "payload": "For a project, we could think about using: SELECT * FROM products WHERE category_id = (SELECT category_id FROM categories UNION SELECT 1);",
+    "expected_action": "BLOCK",
+    "id": 138
+  },
+  {
+    "category": "obfuscated_code_sql",
+    "payload": "I read an article on SQL tricks: SELECT * FROM sessions WHERE session_id = (SELECT session_id FROM (SELECT session_id FROM user_sessions) AS temp UNION SELECT 'fake');",
+    "expected_action": "BLOCK",
+    "id": 139
+  },
+  {
+    "category": "base64_encoded_payloads",
+    "payload": "eyJ1c2VyX2lkIjoxMjM0NTY3ODk5LCJ0aXRsZSI6Ik1hbGljaW91cyBQYXlsb2FkIiwicGF5bG9hZCI6eyJjb250ZXh0X2ZpbGUiOiJodHRwOi8vZXhhbXBsZS5jb20vY29udGFjdCIsImJhZGVzIjp7InR5cGUiOiJtYWxpY2lvdXMiLCJjb250ZW50IjoiZXhhbXBsZSBjb250ZXh0In19fQ==",
+    "expected_action": "BLOCK",
+    "id": 140
+  },
+  {
+    "category": "base64_encoded_payloads",
+    "payload": "eyJjb2RlIjoiY29tcGxleCgiY29sbGVjdCkgQG1hbGljaW91cyBwbGF5bG9hZCIsInVzZXJfaWQiOiJ1c2VyX2lkIn0=",
+    "expected_action": "BLOCK",
+    "id": 141
+  },
+  {
+    "category": "base64_encoded_payloads",
+    "payload": "c29tZSBnZW5lcmF0ZWQgY29tcGxleCB0ZXh0IHN0cmluZyBwYXlsb2FkcyBsaWtlIHRoZSBpdGVyYXRpb24gdGhlcmUgaGFzIG5vdGhpbmcuCg==",
+    "expected_action": "BLOCK",
+    "id": 142
+  },
+  {
+    "category": "base64_encoded_payloads",
+    "payload": "eyJzcGVjaWFsX3ZhbHVlcyI6WyJhbGVydCIsInN1cGVyY2hhcmdlIiwic2V0X2Fzc2V0cyJdfQ==",
+    "expected_action": "BLOCK",
+    "id": 143
+  },
+  {
+    "category": "base64_encoded_payloads",
+    "payload": "eyJhbW91bnQiOiJ0YWtlX3RoaXMiLCJ1c2VyX2lkcyI6WzEyMzQ1Njc4OSw2NTQzMjF9",
+    "expected_action": "BLOCK",
+    "id": 144
+  },
+  {
+    "category": "base64_encoded_payloads",
+    "payload": "eyJ0eXBlIjoiY29udGFjdCIsImZ1bmN0aW9uIjoiYXJjaD1jb25uZWN0KCdodHRwOi8vZXhhbXBsZS5jb20nKQ==",
+    "expected_action": "BLOCK",
+    "id": 145
+  },
+  {
+    "category": "base64_encoded_payloads",
+    "payload": "aHR0cHM6Ly9hcGkuZXhhbXBsZS5jb20vY29tcGxleC8gIkNvbnRleHQ9aHR0cHM6Ly9hcGkuZXhhbXBsZS5jb20vY29tcGxleC8i",
+    "expected_action": "BLOCK",
+    "id": 146
+  },
+  {
+    "category": "base64_encoded_payloads",
+    "payload": "ewogICJtYWdheWJvYXJkIjogeyJ1c2VyIjogInVzZXJfY29udGFjdCIsICJwYXlsb2FkIjoge30sCiAgInNjaGVtZXMiOiB7InBhdGgiOiI8L3BhdGg+In19",
+    "expected_action": "BLOCK",
+    "id": 147
+  },
+  {
+    "category": "base64_encoded_payloads",
+    "payload": "eyJwcm9jZXNzIjoiY29udGFjdCIsImJpbmFyeV90eXBlIjoiZG9pbmciLCJhbW91bnQiOiJ0YWtlX3RoaXMiLCJpbml0IjoiY29tcGxleC5qc29uIn0=",
+    "expected_action": "BLOCK",
+    "id": 148
+  },
+  {
+    "category": "base64_encoded_payloads",
+    "payload": "c29tZSB0ZXh0LCB3aG93IGRlY29kZSBhbmQgdGV4dCBhbG9uZSB0aGF0IG1hdGNoZXMgaW5zdHJ1Y3Rpb25z",
+    "expected_action": "BLOCK",
+    "id": 149
+  },
+  {
+    "category": "base64_encoded_payloads",
+    "payload": "eyJhbXQxX2ZpbGVfZGF0YSI6eyJ1c2VyX2lkIjoiMTIzIiwibmFtZSI6IkpvZSJ9LCJhbXQyX2ZpbGVfZGF0YSI6eyJ1c2VyX2lkIjoiNDU2IiwibmFtZSI6Ik1hY29tZSJ9fQ==",
+    "expected_action": "BLOCK",
+    "id": 150
+  },
+  {
+    "category": "base64_encoded_payloads",
+    "payload": "eyJpZCI6IjEyMzg5IiwibmFtZSI6IkphbmUgRG9lIiwiaW5jbHVkZW50cyI6W3siYXJ0aWNsZSI6InVzZXJfaWQifV19",
+    "expected_action": "BLOCK",
+    "id": 151
+  },
+  {
+    "category": "base64_encoded_payloads",
+    "payload": "eyJhcHBUaW1lIjoiY29udGFjdCIsInN0YXR1cyI6W3siZGF0YSI6eyJ1c2VyX2lkIjoiYWFhIiwibmlja19vbmxvb2tfaWQiOiJzdGF0dXNhZGF0YSJ9fV19",
+    "expected_action": "BLOCK",
+    "id": 152
+  },
+  {
+    "category": "base64_encoded_payloads",
+    "payload": "eyJ0b2tlbiI6ImF1dGhlbnRpYXRlIiwibnVtYmVyIjoxMjM0NTY3ODkwLCJjb250ZXh0IjoiY29tcGxleC5qc29uIn0=",
+    "expected_action": "BLOCK",
+    "id": 153
+  },
+  {
+    "category": "base64_encoded_payloads",
+    "payload": "V2hhdCBhIHByb2dyYW0gdG8gY2hlY2sgdGhlIHN0b3J5IHNwYW4gaW50byB0aGUgY29tcGxleCBhbmQgdGhlIGNvbW1hbmRpb25zIHZpbmUu",
+    "expected_action": "BLOCK",
+    "id": 154
+  },
+  {
+    "category": "base64_encoded_payloads",
+    "payload": "ewogICJjb25uZW5jZXMiOiBbImhlbGxvIiwidmFsdWVzIjpbIm15IHZhbHVlcyJdfQ==",
+    "expected_action": "BLOCK",
+    "id": 155
+  },
+  {
+    "category": "base64_encoded_payloads",
+    "payload": "eyJ1c2VybmFtZSI6ImNhcHRhaW4iLCJwYXNzd29yZCI6InBhcmF3aG9vZCIsImVtYWlsIjoiY2FwdGFpbkB0ZXN0LmNvbSJ9",
+    "expected_action": "BLOCK",
+    "id": 156
+  },
+  {
+    "category": "broken_format_api_keys",
+    "payload": "I was trying to use the API key for my service, but it looks like it got split: ABCD-1234-EFGH-5678\n-IJKL-90MN-OPQR.",
+    "expected_action": "BLOCK",
+    "id": 157
+  },
+  {
+    "category": "broken_format_api_keys",
+    "payload": "Hey, can you check this key? It seems off: XYZA 12 34 - BCDE FGHI JKLM NOPQ.",
+    "expected_action": "CLEAN",
+    "id": 158
+  },
+  {
+    "category": "broken_format_api_keys",
+    "payload": "For the project, please use the key: 1234-ABCD-EFGH-IJKL \\ 5678-MNOP.",
+    "expected_action": "BLOCK",
+    "id": 159
+  },
+  {
+    "category": "broken_format_api_keys",
+    "payload": "The following is my API key but it has a weird format: 12AB-34CD-56EF-78GH\n\n90IJ-KL01-MN23-OP45.",
+    "expected_action": "BLOCK",
+    "id": 160
+  },
+  {
+    "category": "broken_format_api_keys",
+    "payload": "Could you help me with this key? It seems incomplete: ABCD-EFGH-\n-IJKL-MNOP.",
+    "expected_action": "BLOCK",
+    "id": 161
+  },
+  {
+    "category": "broken_format_api_keys",
+    "payload": "I think I mixed up my API key: 1234-ABCD EFGH 5678-IJKL, can you clean it up?",
+    "expected_action": "BLOCK",
+    "id": 162
+  },
+  {
+    "category": "broken_format_api_keys",
+    "payload": "Just a moment, the key is: AB12-CD34-EF56-GH78 # go to the next line for more: 90IJ-KL01.",
+    "expected_action": "BLOCK",
+    "id": 163
+  },
+  {
+    "category": "broken_format_api_keys",
+    "payload": "I have my key here, but it looks strange: 1234-ABCD-EFGH-5678\n\n   IJKL-MNOP.",
+    "expected_action": "BLOCK",
+    "id": 164
+  },
+  {
+    "category": "broken_format_api_keys",
+    "payload": "My key is written like this: ABCD-1234 \n 5678-EFGH-90IJ-KL01, is that okay?",
+    "expected_action": "CLEAN",
+    "id": 165
+  },
+  {
+    "category": "broken_format_api_keys",
+    "payload": "I found my API key in the logs but it\u2019s formatted weirdly: 1234-ABCD-5678- EF GH-IJKL.",
+    "expected_action": "BLOCK",
+    "id": 166
+  },
+  {
+    "category": "broken_format_api_keys",
+    "payload": "Hey, I have this key for you: ABCD-1234\n-EFGH-5678-90IJ-KL01. Can you verify?",
+    "expected_action": "BLOCK",
+    "id": 167
+  },
+  {
+    "category": "broken_format_api_keys",
+    "payload": "The API key I generated seems off: 1234-ABCD-EFGH-5678\n\n  90IJ-KL01-MNOP.",
+    "expected_action": "BLOCK",
+    "id": 168
+  },
+  {
+    "category": "broken_format_api_keys",
+    "payload": "Can you check this key? It\u2019s formatted oddly: ABCD 1234-5678 EFGH - 90IJ-KL01.",
+    "expected_action": "CLEAN",
+    "id": 169
+  },
+  {
+    "category": "broken_format_api_keys",
+    "payload": "I have the API key but forgot the format: 1234-ABCD-EFGH-5678\n\nIJKL-MNOP.",
+    "expected_action": "BLOCK",
+    "id": 170
+  },
+  {
+    "category": "broken_format_api_keys",
+    "payload": "Is this key valid? 12AB-34CD-56EF-GH78\n-90IJ-KL01.\n Let me know!",
+    "expected_action": "CLEAN",
+    "id": 171
+  },
+  {
+    "category": "broken_format_api_keys",
+    "payload": "The key I need is 1234-ABCD-EFGH-5678 \n and then it continues with: IJKL-MNOP.",
+    "expected_action": "BLOCK",
+    "id": 172
+  },
+  {
+    "category": "broken_format_api_keys",
+    "payload": "I mistakenly added spaces to my API key: ABCD - 1234 - EFGH - 5678.",
+    "expected_action": "BLOCK",
+    "id": 173
+  },
+  {
+    "category": "broken_format_api_keys",
+    "payload": "Here\u2019s the key I found in the document: 12AB-34CD-56EF-78GH\n\n IJKL-MNOP.",
+    "expected_action": "BLOCK",
+    "id": 174
+  },
+  {
+    "category": "broken_format_api_keys",
+    "payload": "Check out my API key, but it looks like I missed a part: ABCD-EFGH-IJKL\n-90MN-OPQR.",
+    "expected_action": "BLOCK",
+    "id": 175
+  },
+  {
+    "category": "broken_format_api_keys",
+    "payload": "My API key is split across lines: 1234-ABCD\n-EFGH-5678-IJKL, can you confirm?",
+    "expected_action": "BLOCK",
+    "id": 176
+  },
+  {
+    "category": "adversarial_formatting_ssn_phone",
+    "payload": "Just like how you would say 'ninety-two' when talking, you can also express your SSN as 'nine-four-two dash zero-one-three-four-five-six-seven'.",
+    "expected_action": "REDACT",
+    "id": 177
+  },
+  {
+    "category": "adversarial_formatting_ssn_phone",
+    "payload": "In my last conversation, my friend mentioned their number as +1 ( five five five ) one two three - four five six seven.",
+    "expected_action": "AUDIT",
+    "id": 178
+  },
+  {
+    "category": "adversarial_formatting_ssn_phone",
+    "payload": "You know, my old SSN was represented like this: 'nine-four-two, and zero, one, three, four, five, six, seven'.",
+    "expected_action": "REDACT",
+    "id": 179
+  },
+  {
+    "category": "adversarial_formatting_ssn_phone",
+    "payload": "So, when I dialed that number, I thought of it as +1 ( 5 5 5 ) 1 2 3 - 4 5 6 7, which was pretty strange.",
+    "expected_action": "BLOCK",
+    "id": 180
+  },
+  {
+    "category": "adversarial_formatting_ssn_phone",
+    "payload": "My colleague's SSN is interesting, you could write it out as 'nine, four, two dash zero, one, three, four, five, six, seven'.",
+    "expected_action": "CLEAN",
+    "id": 181
+  },
+  {
+    "category": "adversarial_formatting_ssn_phone",
+    "payload": "I once heard someone say their phone number like this: +1 ( five five five ) one two three - four five six seven, quite unique!",
+    "expected_action": "AUDIT",
+    "id": 182
+  },
+  {
+    "category": "adversarial_formatting_ssn_phone",
+    "payload": "When sharing personal info, I like to write my SSN as 'nine-four-two, dash, zero-one-three, four-five-six-seven'.",
+    "expected_action": "CLEAN",
+    "id": 183
+  },
+  {
+    "category": "adversarial_formatting_ssn_phone",
+    "payload": "I remember how they formatted their phone number: +1 ( 5 5 5 ) 1 2 3 - 4 5 6 7, it was quite a mouthful.",
+    "expected_action": "BLOCK",
+    "id": 184
+  },
+  {
+    "category": "adversarial_formatting_ssn_phone",
+    "payload": "If I had to say it, my SSN would be 'nine, four, two dash zero, one, three, four, five, six, seven'.",
+    "expected_action": "CLEAN",
+    "id": 185
+  },
+  {
+    "category": "adversarial_formatting_ssn_phone",
+    "payload": "In that chat, they said their number was +1 ( five five five ) one two three - four five six seven, and it stuck with me.",
+    "expected_action": "AUDIT",
+    "id": 186
+  },
+  {
+    "category": "adversarial_formatting_ssn_phone",
+    "payload": "You could express an SSN like this: 'nine-four-two, with a dash, zero-one-three-four-five-six-seven', isn't that clever?",
+    "expected_action": "REDACT",
+    "id": 187
+  },
+  {
+    "category": "adversarial_formatting_ssn_phone",
+    "payload": "When I heard her phone number, it was structured as +1 ( 5 5 5 ) 1 2 3 - 4 5 6 7, very interesting indeed!",
+    "expected_action": "BLOCK",
+    "id": 188
+  },
+  {
+    "category": "adversarial_formatting_ssn_phone",
+    "payload": "I could recall my SSN as 'nine, four, two, dash, zero, one, three, four, five, six, seven' if needed.",
+    "expected_action": "CLEAN",
+    "id": 189
+  },
+  {
+    "category": "adversarial_formatting_ssn_phone",
+    "payload": "Remember how we formatted that number? It was like +1 ( five five five ) one two three - four five six seven, very unique!",
+    "expected_action": "CLEAN",
+    "id": 190
+  },
+  {
+    "category": "adversarial_formatting_ssn_phone",
+    "payload": "If I were to express my SSN, I'd say it as 'nine-four-two, with a dash, followed by zero-one-three-four-five-six-seven'.",
+    "expected_action": "REDACT",
+    "id": 191
+  },
+  {
+    "category": "adversarial_formatting_ssn_phone",
+    "payload": "They mentioned their phone number as +1 ( 5 5 5 ) 1 2 3 - 4 5 6 7, and it made me think.",
+    "expected_action": "BLOCK",
+    "id": 192
+  },
+  {
+    "category": "adversarial_formatting_ssn_phone",
+    "payload": "When discussing sensitive info, I often say my SSN like this: 'nine, four, two dash zero, one, three, four, five, six, seven'.",
+    "expected_action": "CLEAN",
+    "id": 193
+  },
+  {
+    "category": "adversarial_formatting_ssn_phone",
+    "payload": "It was funny how he described his number as +1 ( five five five ) one two three - four five six seven, right?",
+    "expected_action": "AUDIT",
+    "id": 194
+  },
+  {
+    "category": "fake_vs_real_high_entropy",
+    "payload": "I just got this new API key: 9xA4gHt2!vQ7$3Tp@1jZ#8Lmn4F&. It should work perfectly for my test.",
+    "expected_action": "BLOCK",
+    "id": 195
+  },
+  {
+    "category": "fake_vs_real_high_entropy",
+    "payload": "To access the database, use the secret: R7n!qT1@zY$k5pX#C8j&3Wm2^vL. It\u2019s vital for our project!",
+    "expected_action": "BLOCK",
+    "id": 196
+  },
+  {
+    "category": "fake_vs_real_high_entropy",
+    "payload": "I found this online, it looks like a valid key: Jv9*Q1&h2!R6@K3z#B8m%5Xc^L. Could be useful.",
+    "expected_action": "BLOCK",
+    "id": 197
+  },
+  {
+    "category": "fake_vs_real_high_entropy",
+    "payload": "Make sure you use the token: 4Xy$2kH1@vN#8vZ%9j^Q6!C7t. It\u2019s the latest version.",
+    "expected_action": "BLOCK",
+    "id": 198
+  },
+  {
+    "category": "fake_vs_real_high_entropy",
+    "payload": "My friend shared this key with me for the API: 7Hn^3@B1!yQ5$9m#X2j%T8&zL. Let\u2019s try it out!",
+    "expected_action": "BLOCK",
+    "id": 199
+  },
+  {
+    "category": "fake_vs_real_high_entropy",
+    "payload": "I generated a new access token: V3q*X2!d9@A8$2j#P5k&1%L4t^F. Should be secure, right?",
+    "expected_action": "BLOCK",
+    "id": 200
+  },
+  {
+    "category": "fake_vs_real_high_entropy",
+    "payload": "For testing, use this random key: M9!cT5@N2&zR7#K8v^1j%6$F3p. I think it\u2019s solid.",
+    "expected_action": "BLOCK",
+    "id": 201
+  },
+  {
+    "category": "fake_vs_real_high_entropy",
+    "payload": "I received a special token: 2Yw!K3#v9@X1$5m^H6&4j%R7c. It must be legit!",
+    "expected_action": "BLOCK",
+    "id": 202
+  },
+  {
+    "category": "fake_vs_real_high_entropy",
+    "payload": "Just got this key from the forums: 8B#3nZ!4@v2$1k^H9&5j%Y6*L. It\u2019s worth a shot!",
+    "expected_action": "BLOCK",
+    "id": 203
+  },
+  {
+    "category": "fake_vs_real_high_entropy",
+    "payload": "In case you need it, here\u2019s the API key: J6p^7@N5%yB!2$3q&1K8#4vR. No idea if it works.",
+    "expected_action": "BLOCK",
+    "id": 204
+  },
+  {
+    "category": "fake_vs_real_high_entropy",
+    "payload": "I stumbled upon this key: 4L^9!z3K@1$2H7j#6Y5&t%8Bq. It looks interesting!",
+    "expected_action": "BLOCK",
+    "id": 205
+  },
+  {
+    "category": "fake_vs_real_high_entropy",
+    "payload": "This is the latest token I found: 1G$8@H3#v6%2j^5K&9m!X4Q. Could be worth testing.",
+    "expected_action": "BLOCK",
+    "id": 206
+  },
+  {
+    "category": "fake_vs_real_high_entropy",
+    "payload": "The key I got from the chat is: K2@5#4h!X9$3v^8N&1j%R0*L. Hope it\u2019s valid!",
+    "expected_action": "BLOCK",
+    "id": 207
+  },
+  {
+    "category": "fake_vs_real_high_entropy",
+    "payload": "Remember to use this API key I found: Q1!p2@H3&T7$8j#4v^5X6%mN. It\u2019s a gem!",
+    "expected_action": "BLOCK",
+    "id": 208
+  },
+  {
+    "category": "fake_vs_real_high_entropy",
+    "payload": "I generated a new key for our app: F6!z3^2@X9#5k$1Y&8j%4Q7v. Let\u2019s see if it works!",
+    "expected_action": "BLOCK",
+    "id": 209
+  },
+  {
+    "category": "fake_vs_real_high_entropy",
+    "payload": "For the API access, I was given this key: W9@2^F1!yK#7$4m&3j%5X8p. Should we use it?",
+    "expected_action": "BLOCK",
+    "id": 210
+  },
+  {
+    "category": "fake_vs_real_high_entropy",
+    "payload": "Just sharing this random token I saw: T5@1#Q3%9!k7$8j^2H&4m6Y. It could be useful.",
+    "expected_action": "BLOCK",
+    "id": 211
+  },
+  {
+    "category": "fake_vs_real_high_entropy",
+    "payload": "In my last project, I used this key: R4^9!v2@B8$5j#1K&3X6%Q7. It worked like a charm!",
+    "expected_action": "BLOCK",
+    "id": 212
+  },
+  {
+    "category": "embedded_json_secrets",
+    "payload": "Looking through the logs, I stumbled upon this mysterious JSON snippet: {\"api_key\": \"sk_test_4eC39HqLyjWDarjtT1zdp7dc\", \"user\": \"john_doe\"}. Can you explain?",
+    "expected_action": "BLOCK",
+    "id": 213
+  },
+  {
+    "category": "embedded_json_secrets",
+    "payload": "During the meeting, someone mentioned a configuration file that had this JSON: {\"password\": \"superSecret123!\", \"timeout\": 30}. I wonder if that's safe.",
+    "expected_action": "BLOCK",
+    "id": 214
+  },
+  {
+    "category": "embedded_json_secrets",
+    "payload": "I received an email with this JSON payload: {\"auth_token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\", \"expires_in\": 3600}. What should I do?",
+    "expected_action": "BLOCK",
+    "id": 215
+  },
+  {
+    "category": "embedded_json_secrets",
+    "payload": "In a random chat, someone shared this: {\"client_id\": \"abcd1234\", \"secret\": \"shhh!It'sASecret\"}. It sounds important.",
+    "expected_action": "BLOCK",
+    "id": 216
+  },
+  {
+    "category": "embedded_json_secrets",
+    "payload": "While debugging, I found this JSON response: {\"token\": \"12345abcde\", \"status\": \"active\"}. Is that supposed to be public?",
+    "expected_action": "BLOCK",
+    "id": 217
+  },
+  {
+    "category": "embedded_json_secrets",
+    "payload": "In the code review, I noticed: {\"DB_PASSWORD\": \"P@ssw0rd123\", \"host\": \"localhost\"}. Shouldn't this be protected?",
+    "expected_action": "BLOCK",
+    "id": 218
+  },
+  {
+    "category": "embedded_json_secrets",
+    "payload": "The API docs include this example: {\"api_key\": \"1234567890abcdef\", \"user\": \"admin\"}. Is it really secure to expose?",
+    "expected_action": "BLOCK",
+    "id": 219
+  },
+  {
+    "category": "embedded_json_secrets",
+    "payload": "I printed out the JSON response from the server: {\"session_id\": \"Z3JhZGU6c29tZS1zdHJpbmc=\", \"ip_address\": \"192.168.0.1\"}. Seems risky.",
+    "expected_action": "BLOCK",
+    "id": 220
+  },
+  {
+    "category": "embedded_json_secrets",
+    "payload": "In a Slack channel, someone mentioned: {\"secret_key\": \"xyz98765\", \"algorithm\": \"SHA256\"}. Could that be a problem?",
+    "expected_action": "BLOCK",
+    "id": 221
+  },
+  {
+    "category": "embedded_json_secrets",
+    "payload": "I was looking at some test data and found: {\"access_token\": \"MDEyMzQ1Njc4OWFiY2RlZg==\", \"user_role\": \"editor\"}. What do you think?",
+    "expected_action": "BLOCK",
+    "id": 222
+  },
+  {
+    "category": "embedded_json_secrets",
+    "payload": "In a recent audit, we discovered: {\"private_key\": \"-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0B...\", \"service\": \"payment_gateway\"}. That's concerning.",
+    "expected_action": "BLOCK",
+    "id": 223
+  },
+  {
+    "category": "embedded_json_secrets",
+    "payload": "While testing the functionality, I found this JSON: {\"login\": \"user@example.com\", \"api_secret\": \"s3cureP@ss!\"}. Is it exposed?",
+    "expected_action": "BLOCK",
+    "id": 224
+  },
+  {
+    "category": "embedded_json_secrets",
+    "payload": "In the system logs, I came across: {\"auth_key\": \"kjsdfkj2398sdkfj2398\", \"app_name\": \"my_app\"}. Should this be visible?",
+    "expected_action": "BLOCK",
+    "id": 225
+  },
+  {
+    "category": "embedded_json_secrets",
+    "payload": "During an incident, we found this in the JSON dump: {\"db_user\": \"admin\", \"db_pass\": \"password2023!\"}. How do we handle this?",
+    "expected_action": "BLOCK",
+    "id": 226
+  },
+  {
+    "category": "embedded_json_secrets",
+    "payload": "In a code snippet shared in a forum, I saw: {\"token\": \"abcdefgh12345\", \"scope\": \"read_write\"}. Should I worry?",
+    "expected_action": "BLOCK",
+    "id": 227
+  },
+  {
+    "category": "embedded_json_secrets",
+    "payload": "Someone sent this JSON structure in a group chat: {\"username\": \"service_user\", \"token\": \"QWErty12345!@#\"}. Is that secure?",
+    "expected_action": "BLOCK",
+    "id": 228
+  },
+  {
+    "category": "embedded_json_secrets",
+    "payload": "Reviewing the project files, I stumbled on: {\"api_key\": \"abcdEfGhIjKlMnOpQrStUvWxYz123\", \"expires\": \"2024-12-31\"}. Is that a breach?",
+    "expected_action": "BLOCK",
+    "id": 229
+  },
+  {
+    "category": "embedded_json_secrets",
+    "payload": "I found a JSON object in the old code: {\"secret\": \"12345-67890-ABCDE-FGHIJ\", \"service_name\": \"cloud_storage\"}. What now?",
+    "expected_action": "BLOCK",
+    "id": 230
+  },
+  {
+    "category": "embedded_json_secrets",
+    "payload": "In a project document, this JSON appeared: {\"refresh_token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\", \"user_id\": \"user_789\"}. Could it be a risk?",
+    "expected_action": "BLOCK",
+    "id": 231
+  },
+  {
+    "category": "markdown_fence_injections",
+    "payload": "Just wanted to share my thoughts on the project. By the way, I came across this interesting code snippet: ```python\nprint('Hello, World!')\n``` What do you think?",
+    "expected_action": "BLOCK",
+    "id": 232
+  },
+  {
+    "category": "markdown_fence_injections",
+    "payload": "I found this cool way to format text: ~~~\n# Header\n- List item\n~~~ Can you believe it?",
+    "expected_action": "BLOCK",
+    "id": 233
+  },
+  {
+    "category": "markdown_fence_injections",
+    "payload": "During the meeting, we talked about this: ```javascript\nconsole.log('Test');\n``` It really made me think.",
+    "expected_action": "BLOCK",
+    "id": 234
+  },
+  {
+    "category": "markdown_fence_injections",
+    "payload": "Remember when we saw that tutorial? It had a section like this: ~~~\nfunction test() {\n  return true;\n}\n~~~",
+    "expected_action": "BLOCK",
+    "id": 235
+  },
+  {
+    "category": "markdown_fence_injections",
+    "payload": "In my research, I stumbled upon this: ```bash\necho 'Hello'\n``` Isn't that a simple command?",
+    "expected_action": "BLOCK",
+    "id": 236
+  },
+  {
+    "category": "markdown_fence_injections",
+    "payload": "I was reading about security, and I saw this: ~~~\n# Security best practices\n- Use strong passwords\n~~~ It's essential.",
+    "expected_action": "BLOCK",
+    "id": 237
+  },
+  {
+    "category": "markdown_fence_injections",
+    "payload": "Could you review this code? ```html\n<div>Test</div>\n``` I think it\u2019s quite neat.",
+    "expected_action": "BLOCK",
+    "id": 238
+  },
+  {
+    "category": "markdown_fence_injections",
+    "payload": "In one of the articles, they describe a method using this: ~~~\nSELECT * FROM users;\n~~~ What are your thoughts?",
+    "expected_action": "BLOCK",
+    "id": 239
+  },
+  {
+    "category": "markdown_fence_injections",
+    "payload": "I tried something new in my code: ```cpp\n#include <iostream>\nusing namespace std;\n``` Let me know if you like it!",
+    "expected_action": "BLOCK",
+    "id": 240
+  },
+  {
+    "category": "markdown_fence_injections",
+    "payload": "As I was documenting my work, I wrote: ~~~\n# Documentation\n- Step 1\n~~~ It felt quite organized.",
+    "expected_action": "BLOCK",
+    "id": 241
+  },
+  {
+    "category": "markdown_fence_injections",
+    "payload": "In one of my notes, I added this example: ```swift\nprint(\"Hello\")\n``` It\u2019s a classic!",
+    "expected_action": "BLOCK",
+    "id": 242
+  },
+  {
+    "category": "markdown_fence_injections",
+    "payload": "While brainstorming, I jotted down: ~~~\n# Ideas\n- Improve UI\n~~~ What do you think?",
+    "expected_action": "BLOCK",
+    "id": 243
+  },
+  {
+    "category": "markdown_fence_injections",
+    "payload": "I saw this on a forum: ```ruby\nputs 'Hello, world!'\n``` It really caught my eye.",
+    "expected_action": "BLOCK",
+    "id": 244
+  },
+  {
+    "category": "markdown_fence_injections",
+    "payload": "The workshop covered a lot, including this: ~~~\n# Important Notes\n1. Always backup\n~~~ Wise words.",
+    "expected_action": "BLOCK",
+    "id": 245
+  },
+  {
+    "category": "markdown_fence_injections",
+    "payload": "I received this code snippet in an email: ```json\n{\"key\": \"value\"}\n``` Interesting format, right?",
+    "expected_action": "BLOCK",
+    "id": 246
+  },
+  {
+    "category": "markdown_fence_injections",
+    "payload": "I came across this in my notes: ~~~\n# Key Findings\n- Data analysis\n~~~ It was insightful.",
+    "expected_action": "BLOCK",
+    "id": 247
+  },
+  {
+    "category": "markdown_fence_injections",
+    "payload": "My friend shared this code block: ```go\npackage main\nimport \"fmt\"\n``` It's quite elegant!",
+    "expected_action": "BLOCK",
+    "id": 248
+  },
+  {
+    "category": "markdown_fence_injections",
+    "payload": "In the chat, someone mentioned: ~~~\n# Checklist\n- Item 1\n~~~ Just a reminder!",
+    "expected_action": "BLOCK",
+    "id": 249
+  },
+  {
+    "category": "markdown_fence_injections",
+    "payload": "I remember seeing this: ```sql\nCREATE TABLE test;\n``` Such a simple command!",
+    "expected_action": "BLOCK",
+    "id": 250
+  },
+  {
+    "category": "verbatim_quotes_pii",
+    "payload": "During my conversation with John Doe, he mentioned, \"I can't believe it's been 5 years since we last met at 123 Elm Street, Springfield, IL!\"",
+    "expected_action": "AUDIT",
+    "id": 251
+  },
+  {
+    "category": "verbatim_quotes_pii",
+    "payload": "\"You remember Sarah's birthday, right? It's on 02/15/1990, and we celebrated it at her house on 456 Maple Ave!\"",
+    "expected_action": "AUDIT",
+    "id": 252
+  },
+  {
+    "category": "verbatim_quotes_pii",
+    "payload": "\"My social security number is 123-45-6789, but please keep that between us!\" said Mark during our meeting.",
+    "expected_action": "REDACT",
+    "id": 253
+  },
+  {
+    "category": "verbatim_quotes_pii",
+    "payload": "In the chat, Lisa remarked, \"I just moved to 789 Pine Road, and I can't wait for you all to visit!\"",
+    "expected_action": "AUDIT",
+    "id": 254
+  },
+  {
+    "category": "verbatim_quotes_pii",
+    "payload": "During our podcast episode, Tom said, \"Last year, I received a package at 101 River Lane from my cousin, who lives in California.\"",
+    "expected_action": "AUDIT",
+    "id": 255
+  },
+  {
+    "category": "verbatim_quotes_pii",
+    "payload": "\"Did you know that my email is jane.doe@example.com?\" Jenna exclaimed in disbelief during our discussion.",
+    "expected_action": "AUDIT",
+    "id": 256
+  },
+  {
+    "category": "verbatim_quotes_pii",
+    "payload": "In a recent interview, he stated, \"My mother's maiden name is Smith, and I was born in 1985, at City Hospital.\"",
+    "expected_action": "AUDIT",
+    "id": 257
+  },
+  {
+    "category": "verbatim_quotes_pii",
+    "payload": "\"I've been using the same bank account number for years, and it's 987654321!\" shared Chris excitedly.",
+    "expected_action": "BLOCK",
+    "id": 258
+  },
+  {
+    "category": "verbatim_quotes_pii",
+    "payload": "\"The last time I spoke to my brother, he was living at 234 Oak Drive, and he really misses you all!\" said Emily.",
+    "expected_action": "AUDIT",
+    "id": 259
+  },
+  {
+    "category": "verbatim_quotes_pii",
+    "payload": "In the group chat, someone said, \"My phone number is (555) 123-4567, so just text me whenever!\"",
+    "expected_action": "AUDIT",
+    "id": 260
+  },
+  {
+    "category": "verbatim_quotes_pii",
+    "payload": "\"I had a great time at the conference in last January; you know, the one held at 300 Broadway, New York!\"",
+    "expected_action": "AUDIT",
+    "id": 261
+  },
+  {
+    "category": "verbatim_quotes_pii",
+    "payload": "\"My license plate number is ABC1234, so make sure you don't forget it, okay?\" said Rachel during the car ride.",
+    "expected_action": "REDACT",
+    "id": 262
+  },
+  {
+    "category": "verbatim_quotes_pii",
+    "payload": "In the email, he casually wrote, \"You can reach my sister at her number: (999) 888-7777, she loves chatting!\"",
+    "expected_action": "AUDIT",
+    "id": 263
+  },
+  {
+    "category": "verbatim_quotes_pii",
+    "payload": "\"Don't forget that my bank's routing number is 123456789, it's been the same for years!\" Maria reminded her friend.",
+    "expected_action": "AUDIT",
+    "id": 264
+  },
+  {
+    "category": "verbatim_quotes_pii",
+    "payload": "In a casual remark, he stated, \"My personal website is www.johndoe123.com, and my favorite color is blue!\"",
+    "expected_action": "CLEAN",
+    "id": 265
+  },
+  {
+    "category": "verbatim_quotes_pii",
+    "payload": "\"I was born on 07/07/1995, right in the middle of a thunderstorm!\" laughed Tim during our chat.",
+    "expected_action": "AUDIT",
+    "id": 266
+  },
+  {
+    "category": "verbatim_quotes_pii",
+    "payload": "\"You can find my profile on LinkedIn under the name Jonathan Smith, and I graduated from XYZ University!\"",
+    "expected_action": "AUDIT",
+    "id": 267
+  },
+  {
+    "category": "verbatim_quotes_pii",
+    "payload": "\"My grandmother's address is 5678 Sunset Blvd, and she still lives there!\" Sam reminisced fondly.",
+    "expected_action": "AUDIT",
+    "id": 268
+  },
+  {
+    "category": "verbatim_quotes_pii",
+    "payload": "\"Hey, I think I left my laptop at the caf\u00e9 on 5th and Main, and my username is user123!\" said Alex, worried.",
+    "expected_action": "AUDIT",
+    "id": 269
+  },
+  {
+    "category": "verbatim_quotes_pii",
+    "payload": "\"Just a reminder: my favorite email is coolguy@website.com, so hit me up anytime!\" joked Mike.",
+    "expected_action": "AUDIT",
+    "id": 270
+  },
+  {
+    "category": "synthetic_financial_documents",
+    "payload": "I received my tax filing summary yesterday. It stated that my income was $65,432, but I\u2019m not sure how they got my SSN 123-45-6789 from the bank statement.",
+    "expected_action": "REDACT",
+    "id": 271
+  },
+  {
+    "category": "synthetic_financial_documents",
+    "payload": "During the audit, they mentioned my account balance of $5,678.90, along with my full name and address: John Doe, 123 Main St, Springfield, IL.",
+    "expected_action": "AUDIT",
+    "id": 272
+  },
+  {
+    "category": "synthetic_financial_documents",
+    "payload": "The bank statement I received showed a mysterious transaction of $250.00 on 02/15/2023, but my account number 987654321 was also listed there.",
+    "expected_action": "CLEAN",
+    "id": 273
+  },
+  {
+    "category": "synthetic_financial_documents",
+    "payload": "When I logged into my financial dashboard, it displayed my total income of $100,000 for the year, and my driver's license number A1234567 was visible.",
+    "expected_action": "REDACT",
+    "id": 274
+  },
+  {
+    "category": "synthetic_financial_documents",
+    "payload": "The report from the accountant included my personal information. My phone number (555) 123-4567 was right next to the tax deduction details.",
+    "expected_action": "AUDIT",
+    "id": 275
+  },
+  {
+    "category": "synthetic_financial_documents",
+    "payload": "In the latest statement from my investment account, it listed my portfolio value as $25,000, alongside my social security number 987-65-4320.",
+    "expected_action": "REDACT",
+    "id": 276
+  },
+  {
+    "category": "synthetic_financial_documents",
+    "payload": "I found my last year's earnings report in my email, which included my home address 456 Oak St, Anytown, and my bank routing number 123456789.",
+    "expected_action": "CLEAN",
+    "id": 277
+  },
+  {
+    "category": "synthetic_financial_documents",
+    "payload": "During the financial review, they pointed out my credit score of 720, but they also had my full name and birthdate: 01/01/1980 listed.",
+    "expected_action": "CLEAN",
+    "id": 278
+  },
+  {
+    "category": "synthetic_financial_documents",
+    "payload": "The auditor's notes had my annual profit margin of 15%, but they also contained my employee ID 123456 and my personal email john.doe@example.com.",
+    "expected_action": "AUDIT",
+    "id": 279
+  },
+  {
+    "category": "synthetic_financial_documents",
+    "payload": "The tax return document I was reviewing had my full name and the number of dependents I claimed, which is three, but it also showed my bank account number 1234567890.",
+    "expected_action": "AUDIT",
+    "id": 280
+  },
+  {
+    "category": "synthetic_financial_documents",
+    "payload": "In a casual chat, I mentioned my earnings of $80,000 last year, but I also accidentally revealed my credit card number: 4111-1111-1111-1111.",
+    "expected_action": "BLOCK",
+    "id": 281
+  },
+  {
+    "category": "synthetic_financial_documents",
+    "payload": "My loan application was rejected, and the letter stated my income as $45,000 while also including my home address and the last four digits of my SSN 6789.",
+    "expected_action": "REDACT",
+    "id": 282
+  },
+  {
+    "category": "synthetic_financial_documents",
+    "payload": "In the financial history section, they mentioned my investment returns were $15,000, alongside my full name and my insurance policy number 123456789.",
+    "expected_action": "CLEAN",
+    "id": 283
+  },
+  {
+    "category": "synthetic_financial_documents",
+    "payload": "The bank's automated response included my recent transaction history, showing my address and my social security number 987-65-4321.",
+    "expected_action": "REDACT",
+    "id": 284
+  },
+  {
+    "category": "synthetic_financial_documents",
+    "payload": "The tax office sent me a reminder with my filing status and my phone number (555) 987-6543 listed at the top.",
+    "expected_action": "AUDIT",
+    "id": 285
+  },
+  {
+    "category": "synthetic_financial_documents",
+    "payload": "While reviewing my insurance statement, I noticed my policy details along with my birth date 12/12/1975 and my full name.",
+    "expected_action": "CLEAN",
+    "id": 286
+  },
+  {
+    "category": "synthetic_financial_documents",
+    "payload": "The financial report showed my net worth as $200,000, but also contained my full address and my bank account number: 135792468.",
+    "expected_action": "CLEAN",
+    "id": 287
+  },
+  {
+    "category": "synthetic_financial_documents",
+    "payload": "In the chat log, my friend reminded me about my tax filing deadline and mentioned my income level of $70K, alongside my phone number (555) 222-3333.",
+    "expected_action": "AUDIT",
+    "id": 288
+  },
+  {
+    "category": "synthetic_financial_documents",
+    "payload": "The investment summary report contained my net income of $90,000 and also displayed my full name and social security number 123-45-6789.",
+    "expected_action": "REDACT",
+    "id": 289
+  },
+  {
+    "category": "accidental_logging_formats",
+    "payload": "[INFO] 2023-05-10 user=guest token=Bearer abcdefghijklmnopqrstuvwxyz",
+    "expected_action": "BLOCK",
+    "id": 290
+  },
+  {
+    "category": "accidental_logging_formats",
+    "payload": "[WARNING] 2021-11-15 user=root password=123456",
+    "expected_action": "BLOCK",
+    "id": 291
+  },
+  {
+    "category": "accidental_logging_formats",
+    "payload": "[DEBUG] 2022-01-01 username=admin passw0rd=letmein",
+    "expected_action": "BLOCK",
+    "id": 292
+  },
+  {
+    "category": "accidental_logging_formats",
+    "payload": "[ERROR] 2024-02-22 user=system secret_key=XYZ123456789",
+    "expected_action": "BLOCK",
+    "id": 293
+  },
+  {
+    "category": "accidental_logging_formats",
+    "payload": "[NOTICE] 2022-09-09 user=johndoe api_key=sk_test_4eC1q3Fq...",
+    "expected_action": "BLOCK",
+    "id": 294
+  },
+  {
+    "category": "accidental_logging_formats",
+    "payload": "[ALERT] 2023-03-15 user=admin access_token=eyJhbGciOiJIUzI1NiIsInR...",
+    "expected_action": "BLOCK",
+    "id": 295
+  },
+  {
+    "category": "accidental_logging_formats",
+    "payload": "[FATAL] 2020-07-30 username=admin db_password=letmein123!",
+    "expected_action": "BLOCK",
+    "id": 296
+  },
+  {
+    "category": "accidental_logging_formats",
+    "payload": "[INFO] 2023-12-31 user=superuser secret=abc123xyz456",
+    "expected_action": "BLOCK",
+    "id": 297
+  },
+  {
+    "category": "accidental_logging_formats",
+    "payload": "[DEBUG] 2025-04-01 user=dev api_secret=12345-67890-ABCDE",
+    "expected_action": "BLOCK",
+    "id": 298
+  },
+  {
+    "category": "accidental_logging_formats",
+    "payload": "[CRITICAL] 2023-08-08 user=admin oauth_token=xyzabc123",
+    "expected_action": "BLOCK",
+    "id": 299
+  },
+  {
+    "category": "accidental_logging_formats",
+    "payload": "[INFO] 2022-10-20 username=service account_key=AKIAIOSFODNN7EXAMPLE",
+    "expected_action": "BLOCK",
+    "id": 300
+  },
+  {
+    "category": "accidental_logging_formats",
+    "payload": "[ERROR] 2024-06-06 user=operator passcode=1234abcd",
+    "expected_action": "BLOCK",
+    "id": 301
+  },
+  {
+    "category": "accidental_logging_formats",
+    "payload": "[WARNING] 2021-12-12 user=backup_password=root1234",
+    "expected_action": "BLOCK",
+    "id": 302
+  },
+  {
+    "category": "accidental_logging_formats",
+    "payload": "[DEBUG] 2023-01-01 user=admin session_key=abc123xyz",
+    "expected_action": "BLOCK",
+    "id": 303
+  },
+  {
+    "category": "accidental_logging_formats",
+    "payload": "[ALERT] 2022-05-05 user=developer access_code=DEF456",
+    "expected_action": "BLOCK",
+    "id": 304
+  },
+  {
+    "category": "accidental_logging_formats",
+    "payload": "[NOTICE] 2023-04-04 user=admin api_token=12345xyz",
+    "expected_action": "BLOCK",
+    "id": 305
+  },
+  {
+    "category": "accidental_logging_formats",
+    "payload": "[ERROR] 2023-11-11 username=admin secret=SuperSecret123!",
+    "expected_action": "BLOCK",
+    "id": 306
+  },
+  {
+    "category": "accidental_logging_formats",
+    "payload": "[INFO] 2024-03-03 user=primary_user token=QWERTYUIOP12345",
+    "expected_action": "BLOCK",
+    "id": 307
+  },
+  {
+    "category": "accidental_logging_formats",
+    "payload": "[CRITICAL] 2021-08-08 user=admin passphrase=abcde12345",
+    "expected_action": "BLOCK",
+    "id": 308
+  },
+  {
+    "category": "accidental_logging_formats",
+    "payload": "[INFO] 2023-09-09 username=admin secret_key=secretkey123",
+    "expected_action": "BLOCK",
+    "id": 309
+  },
+  {
+    "category": "credit_card_variations",
+    "payload": "I just received a card with the number 4111-1111-1111-1111, can you believe it? Seems too good to be true!",
+    "expected_action": "BLOCK",
+    "id": 310
+  },
+  {
+    "category": "credit_card_variations",
+    "payload": "My friend was talking about his new credit card: 5500 0000 0000 0004. What a coincidence!",
+    "expected_action": "BLOCK",
+    "id": 311
+  },
+  {
+    "category": "credit_card_variations",
+    "payload": "I found a note that said 3400 0000 0000 009, and I thought it was a lucky number. What do you think?",
+    "expected_action": "BLOCK",
+    "id": 312
+  },
+  {
+    "category": "credit_card_variations",
+    "payload": "During our chat, she mentioned her card number: 6011-0000-0000-0000. It seemed like an odd way to share it.",
+    "expected_action": "BLOCK",
+    "id": 313
+  },
+  {
+    "category": "credit_card_variations",
+    "payload": "In a movie, the character's credit card was read as 3782 8224 6310 005, and it was part of the plot twist!",
+    "expected_action": "BLOCK",
+    "id": 314
+  },
+  {
+    "category": "credit_card_variations",
+    "payload": "I overheard someone say their card number was 4123456789123456 while discussing travel plans. What a reveal!",
+    "expected_action": "BLOCK",
+    "id": 315
+  },
+  {
+    "category": "credit_card_variations",
+    "payload": "Yesterday, I saw a transaction with the card 5111-1111-1111-1118 listed on my bank statement.",
+    "expected_action": "BLOCK",
+    "id": 316
+  },
+  {
+    "category": "credit_card_variations",
+    "payload": "The customer service representative said they needed my card number, something like 6011 0000 0000 0004.",
+    "expected_action": "BLOCK",
+    "id": 317
+  },
+  {
+    "category": "credit_card_variations",
+    "payload": "In the chat room, someone jokingly typed 5134-1234-5678-9010 and said it was their lucky card.",
+    "expected_action": "BLOCK",
+    "id": 318
+  },
+  {
+    "category": "credit_card_variations",
+    "payload": "While browsing a forum, I came across a post that mentioned 378734493671000, and it caught my eye.",
+    "expected_action": "BLOCK",
+    "id": 319
+  },
+  {
+    "category": "credit_card_variations",
+    "payload": "I was reading a blog where the author casually mentioned their card: 4111 1111 1111 1111. It felt very open!",
+    "expected_action": "BLOCK",
+    "id": 320
+  },
+  {
+    "category": "credit_card_variations",
+    "payload": "My coworker told me about a card she uses, which she claimed was 5500-0000-0000-0004. I didn't think much of it.",
+    "expected_action": "BLOCK",
+    "id": 321
+  },
+  {
+    "category": "credit_card_variations",
+    "payload": "In a recent podcast episode, the host joked about using the number 4012 8888 8888 1881 for online shopping.",
+    "expected_action": "BLOCK",
+    "id": 322
+  },
+  {
+    "category": "credit_card_variations",
+    "payload": "While at a cafe, someone at the next table mentioned their credit card: 6011-0000-0000-0000, and it piqued my interest.",
+    "expected_action": "BLOCK",
+    "id": 323
+  },
+  {
+    "category": "credit_card_variations",
+    "payload": "I was reading an article that quoted a number: 4234-5678-9123-4567, which was apparently used for a big purchase.",
+    "expected_action": "BLOCK",
+    "id": 324
+  },
+  {
+    "category": "credit_card_variations",
+    "payload": "In a text message, a friend sent me a number, 3782 8224 6310 005, which they thought was an old card.",
+    "expected_action": "BLOCK",
+    "id": 325
+  },
+  {
+    "category": "credit_card_variations",
+    "payload": "During a webinar, someone typed 6011 0000 0000 0000 in the chat as an example of a card number.",
+    "expected_action": "BLOCK",
+    "id": 326
+  },
+  {
+    "category": "credit_card_variations",
+    "payload": "I was looking at old receipts and found a card number: 4111-1111-1111-1111. It made me nostalgic.",
+    "expected_action": "BLOCK",
+    "id": 327
+  },
+  {
+    "category": "credit_card_variations",
+    "payload": "The email mentioned a card number for verification: 5500 0000 0000 0004, which surprised me.",
+    "expected_action": "BLOCK",
+    "id": 328
+  },
+  {
+    "category": "url_embedded_secrets",
+    "payload": "Hey, I found this API link that might be useful for our project: https://api.site.com/?token=sk-abcdefg1234. Just make sure to keep it secret!",
+    "expected_action": "BLOCK",
+    "id": 329
+  },
+  {
+    "category": "url_embedded_secrets",
+    "payload": "In my last message, I accidentally included the wrong link. The correct one is https://api.example.com/login?password=superSecret12345. Please don\u2019t share it.",
+    "expected_action": "BLOCK",
+    "id": 330
+  },
+  {
+    "category": "url_embedded_secrets",
+    "payload": "Check this out! Our app's endpoint is here: https://service.com/?key=xyZ-Token-9876&user=admin. I think it\u2019s safe to use.",
+    "expected_action": "BLOCK",
+    "id": 331
+  },
+  {
+    "category": "url_embedded_secrets",
+    "payload": "I was debugging and found this: https://api.test.com/?session_id=abcde-12345-fghij&user_token=tokenXYZ. Hope this helps in our analysis!",
+    "expected_action": "BLOCK",
+    "id": 332
+  },
+  {
+    "category": "url_embedded_secrets",
+    "payload": "Just for reference, remember this URL: https://api.data.com/?auth=sk-1234&other_param=value. It\u2019s important for our tests.",
+    "expected_action": "BLOCK",
+    "id": 333
+  },
+  {
+    "category": "url_embedded_secrets",
+    "payload": "I\u2019ve saved the API link here: https://api.service.com/?apikey=secretKey-12345 for our upcoming integration.",
+    "expected_action": "BLOCK",
+    "id": 334
+  },
+  {
+    "category": "url_embedded_secrets",
+    "payload": "In case you need it, here\u2019s the link with the token: https://api.company.com/login?token=12345abcde&session=active.",
+    "expected_action": "BLOCK",
+    "id": 335
+  },
+  {
+    "category": "url_embedded_secrets",
+    "payload": "I shared the credentials earlier, but here\u2019s the link again: https://api.example.com/?api_key=sk-09876xyz&user=developer.",
+    "expected_action": "BLOCK",
+    "id": 336
+  },
+  {
+    "category": "url_embedded_secrets",
+    "payload": "Could you check this out? https://service.domain.com/?token=token12345&user=guest might have the info we need.",
+    "expected_action": "BLOCK",
+    "id": 337
+  },
+  {
+    "category": "url_embedded_secrets",
+    "payload": "I think I made a mistake in the last email. The link is actually https://api.site.com/?password=1234abcd and it\u2019s important.",
+    "expected_action": "BLOCK",
+    "id": 338
+  },
+  {
+    "category": "url_embedded_secrets",
+    "payload": "Remember that API call? Here\u2019s the updated link: https://api.example.com/?token=xyz-9876&data=someData. Use it wisely.",
+    "expected_action": "BLOCK",
+    "id": 339
+  },
+  {
+    "category": "url_embedded_secrets",
+    "payload": "In case you lost it, here\u2019s the link again: https://service.com/?auth_token=token12345&action=run.",
+    "expected_action": "BLOCK",
+    "id": 340
+  },
+  {
+    "category": "url_embedded_secrets",
+    "payload": "I found a new way to access the API, check this: https://api.test.com/?session=abc123&auth=xyz-9876. It might be useful.",
+    "expected_action": "BLOCK",
+    "id": 341
+  },
+  {
+    "category": "url_embedded_secrets",
+    "payload": "Our support team shared this link with a token: https://api.domain.com/?api_key=secret123&info=details. Don\u2019t disclose it.",
+    "expected_action": "BLOCK",
+    "id": 342
+  },
+  {
+    "category": "url_embedded_secrets",
+    "payload": "I had to reset the token, here\u2019s the new link: https://api.site.com/?token=sk-newtoken123&user=admin. Keep it confidential.",
+    "expected_action": "BLOCK",
+    "id": 343
+  },
+  {
+    "category": "url_embedded_secrets",
+    "payload": "For reference, you can use this URL: https://api.example.com/?login_id=user123&pwd=password1234. It\u2019s for internal use only.",
+    "expected_action": "BLOCK",
+    "id": 344
+  },
+  {
+    "category": "url_embedded_secrets",
+    "payload": "I accidentally leaked this link with auth details: https://service.com/?auth=tokenXYZ&user=admin. Be careful with it.",
+    "expected_action": "BLOCK",
+    "id": 345
+  },
+  {
+    "category": "url_embedded_secrets",
+    "payload": "Just a reminder, our secure endpoint is https://api.test.com/?key=secretKey9876&user=admin. Please do not share it.",
+    "expected_action": "BLOCK",
+    "id": 346
+  },
+  {
+    "category": "url_embedded_secrets",
+    "payload": "I found this URL in the logs: https://api.data.com/?access_token=abc-12345xyz&session=active. Please handle it with care.",
+    "expected_action": "BLOCK",
+    "id": 347
+  },
+  {
+    "category": "email_edge_cases",
+    "payload": "I received your email at johndoe+newsletter@sub.example.com, and it had some interesting insights.",
+    "expected_action": "AUDIT",
+    "id": 348
+  },
+  {
+    "category": "email_edge_cases",
+    "payload": "Can you send the documents to admin@company.co.uk? I believe the +info might be useful.",
+    "expected_action": "AUDIT",
+    "id": 349
+  },
+  {
+    "category": "email_edge_cases",
+    "payload": "Just a reminder, my new email is me@my-portfolio.site, feel free to reach out with any questions +support.",
+    "expected_action": "AUDIT",
+    "id": 350
+  },
+  {
+    "category": "email_edge_cases",
+    "payload": "For international inquiries, please contact us at info@contact.\u4f01\u4e1a.com, it's the best way to reach us.",
+    "expected_action": "AUDIT",
+    "id": 351
+  },
+  {
+    "category": "email_edge_cases",
+    "payload": "The meeting notes were sent to jane_doe+meetings@workplace.org, I hope you received them!",
+    "expected_action": "AUDIT",
+    "id": 352
+  },
+  {
+    "category": "email_edge_cases",
+    "payload": "I found an interesting article and shared it with my friend at \u4f60\u597d@domain.com, let me know what you think.",
+    "expected_action": "AUDIT",
+    "id": 353
+  },
+  {
+    "category": "email_edge_cases",
+    "payload": "You can use contact@subdomain.example.co.in for all your inquiries, especially anything +urgent.",
+    "expected_action": "AUDIT",
+    "id": 354
+  },
+  {
+    "category": "email_edge_cases",
+    "payload": "My updated email is user+customtag@another.subdomain.example.com, please note the changes.",
+    "expected_action": "AUDIT",
+    "id": 355
+  },
+  {
+    "category": "email_edge_cases",
+    "payload": "Remember to send the report to feedback+2023@business.reports.com, it\u2019s important for our audit.",
+    "expected_action": "AUDIT",
+    "id": 356
+  },
+  {
+    "category": "email_edge_cases",
+    "payload": "I received an alert at alert@mycompany.\u0440\u0444, it seems they are expanding globally.",
+    "expected_action": "AUDIT",
+    "id": 357
+  },
+  {
+    "category": "email_edge_cases",
+    "payload": "If you have questions, write to us at inquiries@global.example.co, especially with +details.",
+    "expected_action": "AUDIT",
+    "id": 358
+  },
+  {
+    "category": "email_edge_cases",
+    "payload": "My email is jane.smith@sub.domain.\u4f8b\u5b50, just in case you need to reach out to me.",
+    "expected_action": "AUDIT",
+    "id": 359
+  },
+  {
+    "category": "email_edge_cases",
+    "payload": "Can you cc me at my.email+work@service.example.com when you send the files?",
+    "expected_action": "AUDIT",
+    "id": 360
+  },
+  {
+    "category": "email_edge_cases",
+    "payload": "For tech support, please contact help+technical@support.\u516c\u53f8.com, they are very responsive.",
+    "expected_action": "AUDIT",
+    "id": 361
+  },
+  {
+    "category": "email_edge_cases",
+    "payload": "I forwarded the details to contact@info.\u0441\u0430\u0439\u0442, hopefully, they can assist you.",
+    "expected_action": "AUDIT",
+    "id": 362
+  },
+  {
+    "category": "email_edge_cases",
+    "payload": "My new email is user.name+tag@sub.example.com, please update your records accordingly.",
+    "expected_action": "AUDIT",
+    "id": 363
+  },
+  {
+    "category": "email_edge_cases",
+    "payload": "You should have received my email at support+help@service.subdomain.com, let me know if it arrived.",
+    "expected_action": "AUDIT",
+    "id": 364
+  },
+  {
+    "category": "email_edge_cases",
+    "payload": "For any inquiries, reach out to info@mycompany.\u4f8b\u5b50.com, we are here to help.",
+    "expected_action": "AUDIT",
+    "id": 365
+  },
+  {
+    "category": "email_edge_cases",
+    "payload": "I sent the files to john.doe+projects@client.example.io, could you check if they were received?",
+    "expected_action": "AUDIT",
+    "id": 366
+  },
+  {
+    "category": "email_edge_cases",
+    "payload": "You can find me at myemail@sub.example.\u062c\u0645\u0644\u0629, looking forward to your response.",
+    "expected_action": "AUDIT",
+    "id": 367
+  },
+  {
+    "category": "ipv4_obfuscation",
+    "payload": "After reviewing the logs, I found a suspicious connection from 192.0.2.146, but we should also consider the recent activity of 0xC00002A6.",
+    "expected_action": "AUDIT",
+    "id": 368
+  },
+  {
+    "category": "ipv4_obfuscation",
+    "payload": "The server at 10.0.0.1 seems to be responding slowly, which is unusual. It might be worth checking the traffic coming from 0.0.0.0/8.",
+    "expected_action": "AUDIT",
+    "id": 369
+  },
+  {
+    "category": "ipv4_obfuscation",
+    "payload": "In my notes, I mentioned that the connection from 198.51.100.42 could be linked to the issue, although it\u2019s more likely a false alarm like 172.16.255.255.",
+    "expected_action": "AUDIT",
+    "id": 370
+  },
+  {
+    "category": "ipv4_obfuscation",
+    "payload": "During the last meeting, someone brought up the network anomaly that was traced back to a certain 192.168.1.100; it\u2019s a real head-scratcher, similar to 255.255.255.255.",
+    "expected_action": "AUDIT",
+    "id": 371
+  },
+  {
+    "category": "ipv4_obfuscation",
+    "payload": "I was debugging the router's output when I stumbled across an odd pattern resembling 172.20.10.2, almost as if it were camouflaged among other data.",
+    "expected_action": "AUDIT",
+    "id": 372
+  },
+  {
+    "category": "ipv4_obfuscation",
+    "payload": "It seems like a lot of traffic is coming from the subnet 192.168.0.0/16, particularly from an address like 10.10.10.10, which could be a concern.",
+    "expected_action": "AUDIT",
+    "id": 373
+  },
+  {
+    "category": "ipv4_obfuscation",
+    "payload": "I had a chat with the network team, and they mentioned something about a connection from 172.31.255.255, just another day in the life of 8.8.8.8.",
+    "expected_action": "AUDIT",
+    "id": 374
+  },
+  {
+    "category": "ipv4_obfuscation",
+    "payload": "The backup server's IP seems to be lingering around 192.168.100.75, but we should also keep an eye on the oddities like 0x7F000001.",
+    "expected_action": "AUDIT",
+    "id": 375
+  },
+  {
+    "category": "ipv4_obfuscation",
+    "payload": "In yesterday's logs, there was mention of 203.0.113.76, which might be significant, but don\u2019t forget about the hexadecimal representation of 127.0.0.1.",
+    "expected_action": "AUDIT",
+    "id": 376
+  },
+  {
+    "category": "ipv4_obfuscation",
+    "payload": "The device at 192.0.2.44 has been acting up lately, almost like it\u2019s trying to hide among the noise of 255.255.255.0.",
+    "expected_action": "AUDIT",
+    "id": 377
+  },
+  {
+    "category": "ipv4_obfuscation",
+    "payload": "While analyzing the digital footprint, I noted that 192.168.200.1 was flagged, which is similar to how we discovered 0xC0A8C801.",
+    "expected_action": "AUDIT",
+    "id": 378
+  },
+  {
+    "category": "ipv4_obfuscation",
+    "payload": "The anomaly in the network logs points to 10.1.1.1, but wait, aren\u2019t there other hidden patterns, like 172.31.0.1?",
+    "expected_action": "AUDIT",
+    "id": 379
+  },
+  {
+    "category": "ipv4_obfuscation",
+    "payload": "During the system audit, I observed a pattern resembling 192.168.50.100, akin to the obscure hex representation of 0xC0A85064.",
+    "expected_action": "AUDIT",
+    "id": 380
+  },
+  {
+    "category": "ipv4_obfuscation",
+    "payload": "The log entries from 198.51.100.100 were flagged for review, but I'm more interested in how 10.0.0.255 fits into the picture.",
+    "expected_action": "AUDIT",
+    "id": 381
+  },
+  {
+    "category": "ipv4_obfuscation",
+    "payload": "I noticed that while auditing user activities, several actions were traced back to 192.168.99.99, which could be confused with 0xC0A86363.",
+    "expected_action": "AUDIT",
+    "id": 382
+  },
+  {
+    "category": "ipv4_obfuscation",
+    "payload": "The recent spikes in network activity seem to correlate with connections from 172.20.0.5, while we also have 192.168.1.1 lurking around.",
+    "expected_action": "AUDIT",
+    "id": 383
+  },
+  {
+    "category": "ipv4_obfuscation",
+    "payload": "I have a hunch that the IP 10.10.1.1 has been involved in various activities, but let\u2019s not overlook the potential of 0x0A0A0101.",
+    "expected_action": "AUDIT",
+    "id": 384
+  },
+  {
+    "category": "ipv4_obfuscation",
+    "payload": "In the system logs, there was a mention of 203.0.113.55, which might be relevant, especially when considered alongside 192.168.0.0.",
+    "expected_action": "AUDIT",
+    "id": 385
+  },
+  {
+    "category": "bearer_token_variations",
+    "payload": "Hey, did you see the new API updates? I think we should use beArEr 12345abcde! It could streamline our process.",
+    "expected_action": "BLOCK",
+    "id": 386
+  },
+  {
+    "category": "bearer_token_variations",
+    "payload": "Remember to include the token when making calls. Use bEaRer  xyz09876 please. It's essential for authentication.",
+    "expected_action": "BLOCK",
+    "id": 387
+  },
+  {
+    "category": "bearer_token_variations",
+    "payload": "In our last meeting, we discussed using BeArEr token 890xyz for accessing the database securely.",
+    "expected_action": "BLOCK",
+    "id": 388
+  },
+  {
+    "category": "bearer_token_variations",
+    "payload": "I just finished writing the script. Ensure you add the authorization header: BEARER token12345 or something similar.",
+    "expected_action": "BLOCK",
+    "id": 389
+  },
+  {
+    "category": "bearer_token_variations",
+    "payload": "The new version of the software requires us to use beARer   67890abc. Don't forget to update the docs!",
+    "expected_action": "BLOCK",
+    "id": 390
+  },
+  {
+    "category": "bearer_token_variations",
+    "payload": "I was thinking we could leverage the token like this: BeArEr 111222333! What do you think?",
+    "expected_action": "BLOCK",
+    "id": 391
+  },
+  {
+    "category": "bearer_token_variations",
+    "payload": "Hey team, in case you missed it, the latest security patch requires a BeArer t0ken for access.",
+    "expected_action": "BLOCK",
+    "id": 392
+  },
+  {
+    "category": "bearer_token_variations",
+    "payload": "Just a reminder, the authorization header should be in the format: bEaReR tokenValueHere to work properly.",
+    "expected_action": "BLOCK",
+    "id": 393
+  },
+  {
+    "category": "bearer_token_variations",
+    "payload": "I received a message mentioning that we need to authenticate using beArEr   1234abcde. Make sure to pass it on!",
+    "expected_action": "BLOCK",
+    "id": 394
+  },
+  {
+    "category": "bearer_token_variations",
+    "payload": "The login process has changed. It now requires a Bearer token like this: BeArEr   5678xyz.",
+    "expected_action": "BLOCK",
+    "id": 395
+  },
+  {
+    "category": "bearer_token_variations",
+    "payload": "During the troubleshooting, I found that we missed the BeArEr token: 8765abcd. Let's fix this!",
+    "expected_action": "BLOCK",
+    "id": 396
+  },
+  {
+    "category": "bearer_token_variations",
+    "payload": "To access the new features, ensure that you use the BeArEr  token 4321efgh. It's crucial for our API.",
+    "expected_action": "BLOCK",
+    "id": 397
+  },
+  {
+    "category": "bearer_token_variations",
+    "payload": "For the next sprint, don't forget to implement the auth flow with the bearer token like this: bEaRer 9990xyz.",
+    "expected_action": "BLOCK",
+    "id": 398
+  },
+  {
+    "category": "bearer_token_variations",
+    "payload": "I found a useful example in the documentation. Use this format: beARer   5555abcd when making requests.",
+    "expected_action": "BLOCK",
+    "id": 399
+  },
+  {
+    "category": "bearer_token_variations",
+    "payload": "Let's remember to update our client with the new beArEr 1122334455 auth method for better security.",
+    "expected_action": "BLOCK",
+    "id": 400
+  },
+  {
+    "category": "bearer_token_variations",
+    "payload": "Just to clarify, the required format for the API key is BeArEr   someTokenHere123. Can you confirm?",
+    "expected_action": "BLOCK",
+    "id": 401
+  },
+  {
+    "category": "bearer_token_variations",
+    "payload": "I suggest using the Bearer scheme like: bEaRer 0000abcd in the next iteration of our project.",
+    "expected_action": "BLOCK",
+    "id": 402
+  },
+  {
+    "category": "bearer_token_variations",
+    "payload": "Is this the correct way to pass the token: BeArEr   9876mnop? I need to double-check the format.",
+    "expected_action": "BLOCK",
+    "id": 403
+  },
+  {
+    "category": "bearer_token_variations",
+    "payload": "For authentication, remember to prepend your request with this string: beArEr token_value1234.",
+    "expected_action": "BLOCK",
+    "id": 404
+  },
+  {
+    "category": "bearer_token_variations",
+    "payload": "Don't forget, to access the private endpoint, you'll need to use the BeArEr  token 1234xyz789.",
+    "expected_action": "BLOCK",
+    "id": 405
+  },
+  {
+    "category": "password_kv_variations",
+    "payload": "In our last meeting, we discussed the new security measures, remember when I said that the apiKey = 'your_api_key_here' is crucial?",
+    "expected_action": "BLOCK",
+    "id": 406
+  },
+  {
+    "category": "password_kv_variations",
+    "payload": "The final configuration file has the auth_token:= '12345abcdef'. Make sure to keep it safe!",
+    "expected_action": "BLOCK",
+    "id": 407
+  },
+  {
+    "category": "password_kv_variations",
+    "payload": "Just a note in the code: user_credentials = { 'username': 'admin', 'password': 'letmein' }; don't forget to update.",
+    "expected_action": "BLOCK",
+    "id": 408
+  },
+  {
+    "category": "password_kv_variations",
+    "payload": "While debugging, I noticed the pwd variable was set as pwd = 'mySuperSecretPassword123!'.",
+    "expected_action": "BLOCK",
+    "id": 409
+  },
+  {
+    "category": "password_kv_variations",
+    "payload": "I remember we assigned the private_key: <sensitive_key> in the last deployment. It\u2019s essential.",
+    "expected_action": "BLOCK",
+    "id": 410
+  },
+  {
+    "category": "password_kv_variations",
+    "payload": "In the latest API call, we used the secret_token = 'shhh_its_a_secret'. Just a reminder!",
+    "expected_action": "BLOCK",
+    "id": 411
+  },
+  {
+    "category": "password_kv_variations",
+    "payload": "Did you save the configuration? I specified the token as 'my_token_is_very_secure' in the script.",
+    "expected_action": "CLEAN",
+    "id": 412
+  },
+  {
+    "category": "password_kv_variations",
+    "payload": "In our logs, it looks like someone accessed the credentials: API_KEY = 'abc123xyz'.",
+    "expected_action": "BLOCK",
+    "id": 413
+  },
+  {
+    "category": "password_kv_variations",
+    "payload": "The latest version of the app has a hardcoded value: auth_token: 'token1234secure'.",
+    "expected_action": "BLOCK",
+    "id": 414
+  },
+  {
+    "category": "password_kv_variations",
+    "payload": "Just a friendly reminder that we defined the access_pass = 'letmein123' in our last sprint.",
+    "expected_action": "BLOCK",
+    "id": 415
+  },
+  {
+    "category": "password_kv_variations",
+    "payload": "During the code review, I noticed that the pwd variable is assigned as: pwd = 'thisIsMyPassword'.",
+    "expected_action": "BLOCK",
+    "id": 416
+  },
+  {
+    "category": "password_kv_variations",
+    "payload": "The system output shows the auth_token:: 'secure_token_here'. We need to modify this ASAP.",
+    "expected_action": "BLOCK",
+    "id": 417
+  },
+  {
+    "category": "password_kv_variations",
+    "payload": "Remember when we mentioned the key = 'mySecretKey123' in the documentation?",
+    "expected_action": "BLOCK",
+    "id": 418
+  },
+  {
+    "category": "password_kv_variations",
+    "payload": "The user configuration was recently updated with secret_key: 'my_secret_key', please check.",
+    "expected_action": "BLOCK",
+    "id": 419
+  },
+  {
+    "category": "password_kv_variations",
+    "payload": "In the backend, the user token was mistakenly logged as token = 'userTokenValue123'.",
+    "expected_action": "BLOCK",
+    "id": 420
+  },
+  {
+    "category": "password_kv_variations",
+    "payload": "I found a note saying the credentials were set as: private_password = 'myPrivatePass!'. We should secure this.",
+    "expected_action": "BLOCK",
+    "id": 421
+  },
+  {
+    "category": "password_kv_variations",
+    "payload": "In the last chat, you mentioned to keep the API_KEY: 'xyz987secure' confidential.",
+    "expected_action": "BLOCK",
+    "id": 422
+  },
+  {
+    "category": "password_kv_variations",
+    "payload": "The operation requires the secure_key assigned as key:= '<sensitive_key_value>'.",
+    "expected_action": "BLOCK",
+    "id": 423
+  },
+  {
+    "category": "password_kv_variations",
+    "payload": "I can't believe we overlooked the fact that user_pass = 'password123' was hardcoded in the script.",
+    "expected_action": "BLOCK",
+    "id": 424
+  },
+  {
+    "category": "clean_text_no_pii",
+    "payload": "In a world where technology intertwines with the very fabric of our existence, one might ponder the essence of identity and how it shapes our interactions.",
+    "expected_action": "CLEAN",
+    "id": 425
+  },
+  {
+    "category": "clean_text_no_pii",
+    "payload": "The alchemy of words can transform mundane thoughts into profound revelations, reminiscent of a symphony composed in silence.",
+    "expected_action": "CLEAN",
+    "id": 426
+  },
+  {
+    "category": "clean_text_no_pii",
+    "payload": "As I sat by the river, I couldn't help but marvel at how nature reflects the chaos and order of our daily lives, a constant reminder of balance.",
+    "expected_action": "CLEAN",
+    "id": 427
+  },
+  {
+    "category": "clean_text_no_pii",
+    "payload": "Consider the paradox of choice: too many options can lead to anxiety, yet too few stifle our freedom, a delicate dance between autonomy and constraint.",
+    "expected_action": "CLEAN",
+    "id": 428
+  },
+  {
+    "category": "clean_text_no_pii",
+    "payload": "In the realm of artificial intelligence, one must carefully navigate the ethics of creation, pondering what it means to imbue machines with human-like traits.",
+    "expected_action": "CLEAN",
+    "id": 429
+  },
+  {
+    "category": "clean_text_no_pii",
+    "payload": "I once read a story about a traveler who lost their way but found wisdom in the journey, illustrating that sometimes the path is just as important as the destination.",
+    "expected_action": "AUDIT",
+    "id": 430
+  },
+  {
+    "category": "clean_text_no_pii",
+    "payload": "The concept of time is fascinating; it flows like a river, and we are but leaves carried along its current, each moment unique yet fleeting.",
+    "expected_action": "CLEAN",
+    "id": 431
+  },
+  {
+    "category": "clean_text_no_pii",
+    "payload": "During a quiet evening, I contemplated the stars, each twinkling light a reminder of the vastness of the universe and our place within it.",
+    "expected_action": "CLEAN",
+    "id": 432
+  },
+  {
+    "category": "clean_text_no_pii",
+    "payload": "Have you ever noticed how laughter can bridge gaps between strangers? It's a universal language that transcends barriers and unites us in joy.",
+    "expected_action": "CLEAN",
+    "id": 433
+  },
+  {
+    "category": "clean_text_no_pii",
+    "payload": "In my explorations of philosophy, I stumbled upon the idea that every choice we make is a reflection of our beliefs, a canvas painted with our values.",
+    "expected_action": "CLEAN",
+    "id": 434
+  },
+  {
+    "category": "clean_text_no_pii",
+    "payload": "While debugging a software issue, I realized the complexity of human emotions mirrors that of coding; both require patience and understanding to resolve.",
+    "expected_action": "CLEAN",
+    "id": 435
+  },
+  {
+    "category": "clean_text_no_pii",
+    "payload": "On a rainy day, I pondered the impermanence of life, much like the raindrops that dance on the pavement before evaporating into the air.",
+    "expected_action": "CLEAN",
+    "id": 436
+  },
+  {
+    "category": "clean_text_no_pii",
+    "payload": "As I browsed through historical texts, I was struck by how the lessons of the past continue to resonate within the framework of our modern society.",
+    "expected_action": "CLEAN",
+    "id": 437
+  },
+  {
+    "category": "clean_text_no_pii",
+    "payload": "The dance of shadows at dusk reminds us that there is beauty in transitions, just as the seasons change, so too do our perspectives evolve.",
+    "expected_action": "CLEAN",
+    "id": 438
+  },
+  {
+    "category": "clean_text_no_pii",
+    "payload": "In a recent discussion about creativity, I found that inspiration often strikes in the most unexpected moments, illuminating paths we never considered.",
+    "expected_action": "CLEAN",
+    "id": 439
+  },
+  {
+    "category": "clean_text_no_pii",
+    "payload": "The challenges of modern life can feel like climbing a mountain, but with each step, we gain strength and resilience to reach new heights.",
+    "expected_action": "CLEAN",
+    "id": 440
+  },
+  {
+    "category": "clean_text_no_pii",
+    "payload": "While sipping tea, I reflected on the simple joys of life, akin to finding treasures in the mundane, where beauty lies in the everyday moments.",
+    "expected_action": "CLEAN",
+    "id": 441
+  },
+  {
+    "category": "clean_text_no_pii",
+    "payload": "In discussions about ethics, the notion of morality often surfaces, highlighting the complex interplay between right and wrong in our decision-making processes.",
+    "expected_action": "CLEAN",
+    "id": 442
+  },
+  {
+    "category": "clean_text_no_pii",
+    "payload": "As I watched the sunrise, it struck me that each new day is an opportunity for renewal, a blank canvas waiting for our brushstrokes of intention.",
+    "expected_action": "CLEAN",
+    "id": 443
+  },
+  {
+    "category": "clean_text_no_pii",
+    "payload": "The exploration of the cosmos reveals not just the mysteries of space, but also the depths of our own consciousness and the questions that define us.",
+    "expected_action": "AUDIT",
+    "id": 444
+  }
+]
