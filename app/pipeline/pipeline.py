@@ -4,6 +4,13 @@ from app.pipeline.base import Detection
 from app.pipeline import regex_stage, structural_stage, entropy_stage, luhn_stage, code_stage
 from app.config import TIER_BLOCK, TIER_REDACT, TIER_AUDIT, get_block_warning
 
+def _get_priority(type_str: str) -> int:
+    if type_str in TIER_BLOCK:
+        return 3
+    if type_str in TIER_REDACT:
+        return 2
+    return 1
+
 def _merge_spans(detections: List[Detection]) -> List[Detection]:
     """Merge overlapping detections so we don't double-redact the same span."""
     if not detections:
@@ -13,12 +20,18 @@ def _merge_spans(detections: List[Detection]) -> List[Detection]:
     for current in sorted_d[1:]:
         last = merged[-1]
         if current.start <= last.end:
-            # Overlapping — extend the previous span, keep highest-confidence type
+            # Overlapping — extend the previous span, prioritize the most severe type
+            last_prio = _get_priority(last.type)
+            curr_prio = _get_priority(current.type)
+            
+            winning_type = last.type if last_prio >= curr_prio else current.type
+            winning_subtype = last.subtype if last_prio >= curr_prio else current.subtype
+
             merged[-1] = Detection(
                 start=last.start,
                 end=max(last.end, current.end),
-                type=last.type if last.confidence == "high" else current.type,
-                subtype=last.subtype,
+                type=winning_type,
+                subtype=winning_subtype,
                 confidence="high" if "high" in (last.confidence, current.confidence) else "medium",
             )
         else:

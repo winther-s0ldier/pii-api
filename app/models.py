@@ -22,3 +22,26 @@ class BlockResponse(BaseModel):
     action: str = "BLOCK"
     warning: str
     blocked_types: List[RedactedType] = []
+
+class BatchCheckRequest(BaseModel):
+    messages: List[str] = Field(..., max_length=100, description="Up to 100 messages per batch")
+
+from typing import Union
+
+class CheckResult(BaseModel):
+    status: str = "success"
+    action: str
+    was_redacted: bool
+    message: str
+    redacted_types: List[RedactedType] = []
+
+class BlockResult(BaseModel):
+    status: str = "blocked"
+    action: str = "BLOCK"
+    warning: str
+    blocked_types: List[RedactedType] = []
+
+BatchCheckResult = Union[CheckResult, BlockResult]
+
+class BatchCheckResponse(BaseModel):
+    results: List[BatchCheckResult]

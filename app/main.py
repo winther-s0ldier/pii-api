@@ -41,6 +41,39 @@ def check_message(body: CheckRequest):
         message=processed_text,
         redacted_types=redacted_types
     )
+
+from app.models import BatchCheckRequest, BatchCheckResponse, CheckResult, BlockResult
+
+@app.post("/api/v1/check_batch", response_model=BatchCheckResponse)
+def check_message_batch(body: BatchCheckRequest):
+    from app.config import TIER_BLOCK
+    results = []
+    for msg in body.messages:
+        processed_text, detections, action = pipeline.run(msg)
+        
+        redacted_types = [
+            RedactedType(type=d.type, subtype=d.subtype, confidence=d.confidence)
+            for d in detections
+        ]
+        
+        if action == "BLOCK":
+            blocked_types = [d.type for d in detections if d.type in TIER_BLOCK]
+            primary_type = blocked_types[0] if blocked_types else "code"
+            
+            results.append(BlockResult(
+                action="BLOCK",
+                warning=get_block_warning(primary_type),
+                blocked_types=redacted_types
+            ))
+        else:
+            results.append(CheckResult(
+                action=action,
+                was_redacted=(action == "REDACT"),
+                message=processed_text,
+                redacted_types=redacted_types
+            ))
+            
+    return BatchCheckResponse(results=results)
 @app.get("/api/v1/health")
 def health():
     return {"status": "ok"}
