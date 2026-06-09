@@ -9,11 +9,20 @@ def _mock_print_config(self, config):
 GLiNER2._print_config = _mock_print_config
 
 import torch
+import os
+from dotenv import load_dotenv
+load_dotenv(override=True)
+
+# Read huggingface token from environment
+hf_token = os.getenv("HF_TOKEN", "").strip('"').strip("'") or None
 
 # Load GLiNER2 PII model
 # We load this globally so it stays in memory across requests
 device = "cuda" if torch.cuda.is_available() else "cpu"
-model = GLiNER2.from_pretrained("fastino/gliner2-privacy-filter-PII-multi").to(device)
+model = GLiNER2.from_pretrained(
+    "fastino/gliner2-privacy-filter-PII-multi",
+    token=hf_token
+).to(device)
 
 if device == "cpu":
     import torch.quantization

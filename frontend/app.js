@@ -323,7 +323,7 @@ Transmission halted. Message contained critical PII. Incident logged.
                             redacted_types = data.redacted_types;
                             
                             let initialHtml = '';
-                            const typingIndicator = '<span class="inline-block w-1.5 h-4 ml-1 bg-gray-400 animate-pulse align-middle"></span>';
+                            const typingIndicator = '<span id="loading-buzzword" class="italic text-gray-500 animate-pulse">Thinking...</span>';
                             if (action === 'CLEAN' || action === 'CLEAR') {
                                 initialHtml = createClearBubble(text, typingIndicator);
                             } else {
@@ -332,7 +332,27 @@ Transmission halted. Message contained critical PII. Incident logged.
                             bubbleWrapper.innerHTML = initialHtml;
                             document.querySelector('main').scrollTop = document.querySelector('main').scrollHeight;
                             loadSessions();
+                            
+                            // Cycle through buzzwords
+                            const buzzwords = ["Thinking...", "Writing...", "Cooking...", "Analyzing...", "Pondering...", "Crunching numbers...", "Decoding...", "Synthesizing...", "Brewing thoughts...", "Investigating...", "Formulating..."];
+                            let bIdx = 0;
+                            window.buzzwordInterval = setInterval(() => {
+                                const el = document.getElementById('loading-buzzword');
+                                if (el) {
+                                    bIdx = (bIdx + 1) % buzzwords.length;
+                                    el.innerText = buzzwords[bIdx];
+                                } else {
+                                    clearInterval(window.buzzwordInterval);
+                                }
+                            }, 500);
+
                         } else if (data.type === 'chunk' || data.type === 'error') {
+                            // Clear interval once chunks arrive
+                            if (window.buzzwordInterval) {
+                                clearInterval(window.buzzwordInterval);
+                                window.buzzwordInterval = null;
+                            }
+                            
                             fullReply += data.text;
                             if (!updatePending) {
                                 updatePending = true;

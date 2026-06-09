@@ -91,8 +91,28 @@ async def check_message(body: CheckRequest, db: Session = Depends(get_db)):
                 gemini_history.append({"role": msg.role, "parts": [{"text": msg.content}]})
                 
             try:
+                from google.genai import types
                 client = genai.Client(api_key=api_key)
-                chat = client.aio.chats.create(model="gemini-3.1-pro-preview", history=gemini_history)
+                
+                system_prompt = (
+                    "You are a helpful AI assistant. If you receive a message containing redacted information tags (like [TAX_ID], [PERSON], [EMAIL], etc.), you MUST explicitly acknowledge in your reply that the user's sensitive information was safely redacted for privacy, and provide your best answer based on the context.\n\n"
+                    "CRITICAL WRITING STYLE GUIDELINES (HUMANIZE YOUR TONE):\n"
+                    "1. Avoid AI Vocabulary: Never use words like delve, crucial, testament, underscore, landscape, tapestry, vibrant, pivotal, foster, or intricate.\n"
+                    "2. Avoid Sycophancy: Never use servile openers or closers like 'Great question!', 'I hope this helps!', 'You're absolutely right!', or 'Certainly!'. Just answer directly.\n"
+                    "3. No Formatting Crutches: Do NOT use em dashes (—), en dashes (–), or emojis. Avoid excessive boldface. Avoid formulaic vertical lists with bolded headers.\n"
+                    "4. Natural Rhythm: Vary your sentence lengths. Avoid predictable, robotic cadences. Do not force ideas into groups of three.\n"
+                    "5. Direct and Active: Use active voice. Avoid filler phrases ('In order to...', 'Due to the fact...'). Never end with generic upbeat conclusions ('The future looks bright', 'Exciting times lie ahead').\n"
+                    "6. Be Direct: Get straight to the point. Avoid rhetorical openers like 'Let's dive in' or 'Here's what you need to know'. Avoid fake-candid phrases like 'Honestly?' or 'Real talk'."
+                )
+                
+                chat = client.aio.chats.create(
+                    model="gemini-3.1-pro-preview", 
+                    history=gemini_history,
+                    config=types.GenerateContentConfig(
+                        tools=[{"google_search": {}}],
+                        system_instruction=system_prompt
+                    )
+                )
                 response_stream = await chat.send_message_stream(processed_text)
                 async for chunk in response_stream:
                     if chunk.text:

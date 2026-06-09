@@ -1,38 +1,56 @@
-# PII Detection Hybrid Model Architecture
+# PII detection hybrid model architecture
 
-Our PII (Personally Identifiable Information) detection API utilises a **Hybrid Pipeline Model** to achieve high precision and reliable recall. Rather than relying entirely on a single approach, the system stacks O(1) deterministic rules (Regex, Heuristics) with deep learning contextual extraction.
+Our PII detection API uses a hybrid pipeline to balance speed and accuracy. It stacks deterministic rules (regex, heuristics) with deep learning contextual extraction.
 
-## 1. The Core Deep Learning Engine (GLiNER)
+## The core deep learning engine (GLiNER)
 
-The backbone of the contextual detection is **GLiNER** (Generalist and Lightweight Model for Named Entity Recognition).
+The base contextual model is GLiNER (Generalist and Lightweight Model for Named Entity Recognition). GLiNER takes entity labels as inputs alongside the text, which lets it predict arbitrary entities at runtime without requiring task-specific fine-tuning. This approach avoids the computational overhead of large language models.
 
-### GLiNER Base Model (`gliner_medium-v2.1`)
-GLiNER is a zero-shot NER model that uses a bidirectional transformer to create representations for text spans. Unlike traditional NER models that require task-specific fine-tuning for a fixed set of entity types, GLiNER takes entity labels as inputs alongside the text, allowing it to predict arbitrary, unseen entities at runtime. This gives it massive flexibility without the extreme computational overhead of large language models (LLMs).
+### The fastino variant
+We use the `fastino/gliner2-privacy-filter-PII-multi` fine-tuned variant. It detects PII across multiple languages and identifies contextual data, like addresses and organization names, that regular expressions usually miss. Because it is based on the `medium-v2.1` architecture, it runs efficiently on CPU instances without requiring a GPU.
 
-### The Variant: `fastino/gliner2-privacy-filter-PII-multi`
-To specialise the base model for our specific use case, we use a fine-tuned variant created by *fastino*. 
-- **Focus:** It has been explicitly trained to recognise PII across multiple languages.
-- **Capabilities:** It excels at identifying contextual PII (like addresses, organisations, names, and locations) that regular expressions often miss.
-- **Performance:** Being derived from the `medium-v2.1` architecture, it fits comfortably into memory and executes efficiently even on CPU instances, avoiding severe GPU bottlenecks.
+## Deterministic and heuristic stages
 
-## 2. Deterministic & Heuristic Stages
+Zero-shot models can produce false positives on random numbers or struggle with rigid formats like API keys. To prevent this, the pipeline runs strict deterministic checks before passing text to GLiNER.
 
-Because zero-shot models can occasionally struggle with rigid, highly formatted strings (such as API keys or credit cards) or produce false positives on random numbers, we prepend strict, hardcoded deterministic checks. These are evaluated before GLiNER to guarantee precision:
+### Regex and code stages
+The pipeline uses standard regular expressions to capture emails, phone numbers, and URLs.
 
-### Regex & Code Stages
-Standard patterns are captured instantly using Regex (e.g., standard email formats, phone number layouts, URLs). 
+### Validation thresholds
+The pipeline enforces two strict validation checks:
+- **Luhn algorithm:** Credit card classifications must pass the Luhn check. The algorithm only triggers on digit strings between 13 and 19 characters to avoid flagging 12-digit ID numbers or arbitrary digits.
+- **Shannon entropy:** The pipeline calculates word entropy to catch random cryptographic hashes and access tokens. Standard English text sits around 2.5 to 3.5 entropy. We set the threshold at 3.8 to detect hexadecimal strings without flagging natural language.
 
-### Validation Thresholds
-- **Luhn Algorithm Validation:** We strictly enforce Luhn checks for strings classified as credit cards. To prevent false positives on random large numbers (like 12-digit ID numbers), the Luhn algorithm only triggers on digit strings between **13 and 19 characters** in length.
-- **Shannon Entropy (Secrets & API Keys):** To capture random cryptographic hashes, API keys, and access tokens, we calculate the Shannon Entropy of words. Standard English text has an entropy of roughly ~2.5 to ~3.5. 
-  - Our system defines a custom baseline threshold of **3.8**.
-  - This is intentionally calibrated to detect hexadecimal strings (which mathematically peak around an entropy of 3.8 to 4.0) without flagging natural language as false positive "secrets."
+## Priority merging
 
-## 3. Priority Merging
+When multiple stages flag the same text span, the pipeline runs a priority merge:
+1. BLOCK tier (Secrets, Passwords, Credit Cards)
+2. REDACT tier (Emails, Phone numbers, Names, Addresses)
+3. AUDIT tier (URLs, general entities)
 
-When multiple stages detect an issue in the same text span, the pipeline executes a **Priority Merge**:
-1. **BLOCK Tier** (Highest Priority): Secrets, Passwords, Credit Cards.
-2. **REDACT Tier**: Emails, Phone numbers, Names, Addresses.
-3. **AUDIT Tier** (Lowest Priority): URLs, general entities.
+If the entropy stage and GLiNER detect overlapping strings, the pipeline enforces the more severe tier.
 
-This ensures that if both the Entropy stage and GLiNER detect overlapping strings, the system will always enforce the most severe tier, guaranteeing maximum security.
+## Local installation
+
+You can run this project entirely locally. The GLiNER deep learning model does not require an API key and downloads automatically on the first run.
+
+1. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. **Set up environment variables:**
+   Create a `.env` file in the root directory.
+   ```ini
+   GEMINI_API_KEY="your-google-ai-studio-key"
+   HF_TOKEN="your-huggingface-token" # Optional, if you hit rate limits
+   ```
+   *Note: If you do not provide a Gemini API key, the app still functions in "Pseudo-LLM" mode. This allows you to test the PII redaction pipeline completely offline without an LLM.*
+
+3. **Start the server:**
+   ```bash
+   uvicorn app.main:app --reload
+   ```
+
+4. **The GLiNER model download:**
+   The first time you start the server and send a message, the `gliner2` python package automatically fetches the `fastino/gliner2-privacy-filter-PII-multi` model from the Hugging Face model hub (approx. 400MB). You do not need a Hugging Face account or access token. After the initial download, the model caches locally and subsequent boots are instant.
