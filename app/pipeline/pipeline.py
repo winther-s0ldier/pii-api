@@ -1,7 +1,7 @@
 from typing import List, Tuple
 from fastapi import HTTPException
 from app.pipeline.base import Detection
-from app.pipeline import regex_stage, structural_stage, entropy_stage, luhn_stage, code_stage
+from app.pipeline import regex_stage, structural_stage, entropy_stage, luhn_stage, code_stage, presidio_stage
 from app.config import TIER_BLOCK, TIER_REDACT, TIER_AUDIT, get_block_warning
 
 def _get_priority(type_str: str) -> int:
@@ -64,7 +64,8 @@ def run(text: str, allowed_pii: List[str] = None) -> Tuple[str, List[Detection],
     all_detections.extend(luhn_stage.detect(text))
     all_detections.extend(entropy_stage.detect(text))
     
-    # Run the deep learning engine (GLiNER2)
+    # Run the deep learning engines
+    all_detections.extend(presidio_stage.detect(text))
     all_detections.extend(structural_stage.detect(text))
 
     merged = _merge_spans(all_detections)
