@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 class CheckRequest(BaseModel):
     session_id: str = Field(default="default_session")
     message: str = Field(..., min_length=1, max_length=10_000)
+    allowed_pii: List[str] = Field(default=[])
 
 
 class RedactedType(BaseModel):
@@ -28,6 +29,7 @@ class BlockResponse(BaseModel):
 
 class BatchCheckRequest(BaseModel):
     messages: List[str] = Field(..., max_length=100, description="Up to 100 messages per batch")
+    allowed_pii: List[str] = Field(default=[])
 
 from typing import Union
 

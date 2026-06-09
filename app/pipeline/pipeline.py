@@ -3,7 +3,6 @@ from fastapi import HTTPException
 from app.pipeline.base import Detection
 from app.pipeline import regex_stage, structural_stage, entropy_stage, luhn_stage, code_stage
 from app.config import TIER_BLOCK, TIER_REDACT, TIER_AUDIT, get_block_warning
-import functools
 
 def _get_priority(type_str: str) -> int:
     if type_str in TIER_BLOCK:
@@ -49,12 +48,14 @@ def _classify_tier(detections: List[Detection]) -> str:
         return "AUDIT"
     return "CLEAN"
 
-@functools.lru_cache(maxsize=10000)
-def run(text: str) -> Tuple[str, List[Detection], str]:
+def run(text: str, allowed_pii: List[str] = None) -> Tuple[str, List[Detection], str]:
     """
     Run all stages in sequence.
     Returns (processed_text, list_of_detections, action_tier).
     """
+    if allowed_pii is None:
+        allowed_pii = []
+        
     all_detections: List[Detection] = []
     
     # Run the O(1) rules engines first
@@ -68,26 +69,33 @@ def run(text: str) -> Tuple[str, List[Detection], str]:
 
     merged = _merge_spans(all_detections)
     
-    action = _classify_tier(merged)
+    # Filter out allowed PII, except for TIER_BLOCK items which are strictly locked
+    filtered = []
+    for d in merged:
+        if d.type in allowed_pii and d.type not in TIER_BLOCK:
+            continue
+        filtered.append(d)
+    
+    action = _classify_tier(filtered)
     
     if action == "BLOCK":
-        blocked_types = [d.type for d in merged if d.type in TIER_BLOCK]
+        blocked_types = [d.type for d in filtered if d.type in TIER_BLOCK]
         primary_type = blocked_types[0] if blocked_types else "code"
         warning_msg = get_block_warning(primary_type)
         
         # We handle the HTTP exception at the router level, but we could also raise here
         # For clean architecture, we return the action and let main.py handle the response
-        return "", merged, "BLOCK"
+        return "", filtered, "BLOCK"
 
     if action in ["REDACT", "AUDIT"]:
         # Replace spans from right to left to preserve indices
         result = text
-        for d in sorted(merged, key=lambda x: x.start, reverse=True):
+        for d in sorted(filtered, key=lambda x: x.start, reverse=True):
             # Clean, anonymized label (e.g. "[PERSON]" instead of "[REDACTED:person]")
             clean_label = d.type.upper().replace(" ", "_")
             label = f"[{clean_label}]"
             result = result[: d.start] + label + result[d.end :]
-        return result, merged, action
+        return result, filtered, action
 
     # CLEAN passes the text through unchanged
-    return text, merged, action
+    return text, filtered, action

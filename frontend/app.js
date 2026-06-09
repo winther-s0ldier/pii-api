@@ -42,8 +42,19 @@ document.addEventListener("DOMContentLoaded", () => {
          <span class="material-symbols-outlined text-[18px]">dock_to_right</span>
       </button>
     </div>
-    <div id="sidebar-sessions" class="flex-1 overflow-y-auto p-2">
+    <div id="sidebar-sessions" class="flex-1 overflow-y-auto p-2 border-b border-gray-800">
       <!-- Dynamically populated -->
+    </div>
+    <div class="p-4 shrink-0">
+      <div class="text-xs font-semibold text-gray-500 mb-3 uppercase tracking-wider">Settings</div>
+      <div class="text-sm font-medium text-gray-300 mb-2">Allowed PII</div>
+      <div id="pii-toggles" class="flex flex-col gap-2">
+        <label class="flex items-center gap-2 text-sm text-gray-400 hover:text-gray-200 cursor-pointer transition-colors"><input type="checkbox" value="email" class="rounded bg-gray-800 border-gray-700 text-primary focus:ring-primary/50"> Email</label>
+        <label class="flex items-center gap-2 text-sm text-gray-400 hover:text-gray-200 cursor-pointer transition-colors"><input type="checkbox" value="person" class="rounded bg-gray-800 border-gray-700 text-primary focus:ring-primary/50"> Names</label>
+        <label class="flex items-center gap-2 text-sm text-gray-400 hover:text-gray-200 cursor-pointer transition-colors"><input type="checkbox" value="phone number" class="rounded bg-gray-800 border-gray-700 text-primary focus:ring-primary/50"> Phone</label>
+        <label class="flex items-center gap-2 text-sm text-gray-400 hover:text-gray-200 cursor-pointer transition-colors"><input type="checkbox" value="physical address" class="rounded bg-gray-800 border-gray-700 text-primary focus:ring-primary/50"> Address</label>
+        <label class="flex items-center gap-2 text-sm text-gray-400 hover:text-gray-200 cursor-pointer transition-colors"><input type="checkbox" value="IP address" class="rounded bg-gray-800 border-gray-700 text-primary focus:ring-primary/50"> IP Address</label>
+      </div>
     </div>
   </aside>
   <div id="main-content-wrapper" class="flex-1 flex flex-col h-screen relative min-w-0 transition-all duration-300">
@@ -181,6 +192,38 @@ Transmission halted. Message contained critical PII. Incident logged.
 </div>
         `;
 
+    function getAllowedPII() {
+        const checkboxes = document.querySelectorAll('#pii-toggles input[type="checkbox"]:checked');
+        return Array.from(checkboxes).map(cb => cb.value);
+    }
+
+    const createPreviewBubble = (originalMsg, maskedMsg, redacted_types) => {
+        let formatted = maskedMsg;
+        if (redacted_types && redacted_types.length > 0) {
+            redacted_types.forEach(rt => {
+                const cleanLabel = rt.type.toUpperCase().replace(/ /g, '_');
+                const searchStr = `[${cleanLabel}]`;
+                formatted = formatted.replace(searchStr, `<span class="redacted-mono inline-flex items-center text-[#D97706] bg-[#FEF3C7] px-1.5 py-0.5 rounded-[4px] mx-1 text-[13px] border border-[#D97706]/20 align-baseline cursor-help" title="Original: ${rt.value}">[${cleanLabel}]</span>`);
+            });
+        }
+        return `
+<div class="preview-bubble flex flex-col items-end w-full group mb-4">
+<div class="max-w-[80%] flex flex-col items-end gap-2 relative">
+<div class="bg-blue-50 text-[#2B2B2B] border border-blue-200 rounded-lg px-5 py-3 shadow-sm relative">
+<p class="text-[13px] font-semibold text-blue-600 mb-2 uppercase tracking-wider flex items-center gap-1"><span class="material-symbols-outlined text-[16px]">visibility</span> Preview Before Sending</p>
+<p class="text-[15px] leading-relaxed text-[#2B2B2B]">${formatted}</p>
+<div class="flex gap-2 mt-4 justify-end">
+<button class="cancel-btn text-gray-500 text-sm hover:text-gray-700 px-3 py-1 font-medium transition-colors">Cancel</button>
+<button class="approve-btn bg-primary text-white text-sm hover:bg-blue-700 px-4 py-1.5 rounded-lg flex items-center gap-1 font-medium transition-colors" data-original="${encodeURIComponent(originalMsg)}">
+<span class="material-symbols-outlined text-[16px]">send</span> Approve & Send
+</button>
+</div>
+</div>
+</div>
+</div>
+        `;
+    };
+
     // Use event delegation for input and buttons since DOM changes
     document.body.addEventListener('click', async (e) => {
         const btn = e.target.closest('button');
@@ -202,6 +245,25 @@ Transmission halted. Message contained critical PII. Incident logged.
             if (input) {
                 await handleSendMessage(input);
             }
+        }
+
+                if (btn.classList.contains('approve-btn')) {
+            const originalMsg = decodeURIComponent(btn.getAttribute('data-original'));
+            const bubble = btn.closest('.preview-bubble');
+            if(bubble) bubble.remove();
+            await executeLLM(originalMsg);
+            return;
+        }
+        
+        if (btn.classList.contains('cancel-btn')) {
+            const bubble = btn.closest('.preview-bubble');
+            if(bubble) bubble.remove();
+            const input = document.querySelector('textarea');
+            if(input) {
+                input.disabled = false;
+                input.focus();
+            }
+            return;
         }
 
         if (btn.id === 'sidebar-open') {
@@ -240,10 +302,63 @@ Transmission halted. Message contained critical PII. Incident logged.
             chatStarted = true;
             document.body.className = "font-body h-screen flex antialiased bg-background-light overflow-hidden";
             document.body.innerHTML = chatBaseBody;
-            // The input field got replaced! We need to find the new one to refocus/enable
             loadSessions();
         }
         
+        const tempId = 'temp-' + Date.now();
+        const chatContainer = document.querySelector('main > div');
+        if (chatContainer) {
+            chatContainer.insertAdjacentHTML('beforeend', `<div id="${tempId}" class="flex flex-col items-end w-full group mb-4">
+<div class="max-w-[80%] flex flex-col items-end gap-2 relative">
+<div class="bg-surface text-text-main border border-border-subtle rounded-lg rounded-tr-sm px-5 py-3 shadow-sm relative opacity-50">
+<p class="text-[15px] leading-relaxed">${text}</p>
+</div>
+<div class="text-[11px] text-gray-500 mt-1 flex items-center gap-1"><span class="material-symbols-outlined text-[12px] animate-spin">sync</span> Checking for PII...</div>
+</div></div>`);
+            document.querySelector('main').scrollTop = document.querySelector('main').scrollHeight;
+        }
+
+        try {
+            const allowed_pii = getAllowedPII();
+            const res = await fetch('/api/v1/preview', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: text, session_id: currentSessionId, allowed_pii: allowed_pii })
+            });
+            
+            const data = await res.json();
+            const tempBubble = document.getElementById(tempId);
+            if (tempBubble) tempBubble.remove();
+            
+            if (data.action === "BLOCK") {
+                if(chatContainer) {
+                    chatContainer.insertAdjacentHTML('beforeend', createBlockedBubble(text));
+                    document.querySelector('main').scrollTop = document.querySelector('main').scrollHeight;
+                }
+                const newInput = document.querySelector('textarea');
+                if(newInput) { newInput.disabled = false; newInput.focus(); }
+                return;
+            }
+            
+            if (data.action === "CLEAN" || data.action === "CLEAR") {
+                await executeLLM(text);
+                return;
+            }
+            
+            if(chatContainer) {
+                chatContainer.insertAdjacentHTML('beforeend', createPreviewBubble(text, data.message, data.redacted_types));
+                document.querySelector('main').scrollTop = document.querySelector('main').scrollHeight;
+            }
+            
+        } catch (e) {
+            console.error(e);
+            alert('Error calling preview API: ' + e.message);
+            const newInput = document.querySelector('textarea');
+            if(newInput) { newInput.disabled = false; newInput.focus(); }
+        }
+    }
+
+    async function executeLLM(text) {
         const tempId = 'temp-' + Date.now();
         const chatContainer = document.querySelector('main > div');
         if (chatContainer) {
@@ -258,10 +373,11 @@ Transmission halted. Message contained critical PII. Incident logged.
         }
 
         try {
+
             const res = await fetch('/api/v1/check', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: text, session_id: currentSessionId })
+                body: JSON.stringify({ message: text, session_id: currentSessionId, allowed_pii: getAllowedPII() })
             });
             
             const tempBubble = document.getElementById(tempId);

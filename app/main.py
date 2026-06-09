@@ -12,6 +12,14 @@ from app.pipeline import pipeline
 from app.pipeline import regex_stage
 from app.config import get_block_warning
 from app.db import init_db, get_db, ChatSession, ChatMessage
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from fastapi import Request
+import asyncio
+
+limiter = Limiter(key_func=get_remote_address)
+pipeline_semaphore = asyncio.Semaphore(1)
 
 app = FastAPI(
     title="PII Detection API",
@@ -20,6 +28,8 @@ app = FastAPI(
 
 init_db()
 
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.mount("/static", StaticFiles(directory="frontend"), name="static")
 
 @app.get("/")
@@ -27,14 +37,16 @@ def read_root():
     return FileResponse("frontend/index.html")
 
 @app.post("/api/v1/check")
-async def check_message(body: CheckRequest, db: Session = Depends(get_db)):
+@limiter.limit("20/minute")
+async def check_message(request: Request, body: CheckRequest, db: Session = Depends(get_db)):
     import asyncio
     import json
     from fastapi.responses import StreamingResponse
     from app.config import TIER_BLOCK
 
     # 1. Async Pipeline Check
-    processed_text, detections, action = await asyncio.to_thread(pipeline.run, body.message)
+    async with pipeline_semaphore:
+        processed_text, detections, action = await asyncio.to_thread(pipeline.run, body.message, body.allowed_pii)
     
     redacted_types_dicts = [
         {
@@ -132,6 +144,37 @@ async def check_message(body: CheckRequest, db: Session = Depends(get_db)):
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
+from typing import Union
+from app.models import BatchCheckRequest, BatchCheckResponse, CheckResult, BlockResult
+
+@app.post("/api/v1/preview", response_model=Union[CheckResult, BlockResult])
+@limiter.limit("30/minute")
+async def preview_message(request: Request, body: CheckRequest):
+    async with pipeline_semaphore:
+        processed_text, detections, action = await asyncio.to_thread(pipeline.run, body.message, body.allowed_pii)
+        
+    redacted_types = [
+        RedactedType(type=d.type, subtype=d.subtype, confidence=d.confidence, value=body.message[d.start:d.end])
+        for d in detections
+    ]
+    
+    if action == "BLOCK":
+        from app.config import TIER_BLOCK
+        blocked_types = [d.type for d in detections if d.type in TIER_BLOCK]
+        primary_type = blocked_types[0] if blocked_types else "code"
+        
+        return BlockResult(
+            action="BLOCK",
+            warning=get_block_warning(primary_type),
+            blocked_types=redacted_types
+        )
+    
+    return CheckResult(
+        action=action,
+        was_redacted=(action == "REDACT"),
+        message=processed_text,
+        redacted_types=redacted_types
+    )
 @app.get("/api/v1/sessions", response_model=SessionListResponse)
 def get_sessions(db: Session = Depends(get_db)):
     sessions = db.query(ChatSession).order_by(ChatSession.created_at.desc()).all()
@@ -154,11 +197,12 @@ def get_session(session_id: str, db: Session = Depends(get_db)):
 from app.models import BatchCheckRequest, BatchCheckResponse, CheckResult, BlockResult
 
 @app.post("/api/v1/check_batch", response_model=BatchCheckResponse)
-def check_message_batch(body: BatchCheckRequest):
+@limiter.limit("10/minute")
+def check_message_batch(request: Request, body: BatchCheckRequest):
     from app.config import TIER_BLOCK
     results = []
     for msg in body.messages:
-        processed_text, detections, action = pipeline.run(msg)
+        processed_text, detections, action = pipeline.run(msg, body.allowed_pii)
         
         redacted_types = [
             RedactedType(type=d.type, subtype=d.subtype, confidence=d.confidence)
