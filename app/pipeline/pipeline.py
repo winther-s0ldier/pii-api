@@ -3,6 +3,7 @@ from fastapi import HTTPException
 from app.pipeline.base import Detection
 from app.pipeline import regex_stage, structural_stage, entropy_stage, luhn_stage, code_stage
 from app.config import TIER_BLOCK, TIER_REDACT, TIER_AUDIT, get_block_warning
+import functools
 
 def _get_priority(type_str: str) -> int:
     if type_str in TIER_BLOCK:
@@ -48,6 +49,7 @@ def _classify_tier(detections: List[Detection]) -> str:
         return "AUDIT"
     return "CLEAN"
 
+@functools.lru_cache(maxsize=10000)
 def run(text: str) -> Tuple[str, List[Detection], str]:
     """
     Run all stages in sequence.
@@ -77,13 +79,15 @@ def run(text: str) -> Tuple[str, List[Detection], str]:
         # For clean architecture, we return the action and let main.py handle the response
         return "", merged, "BLOCK"
 
-    if action == "REDACT":
+    if action in ["REDACT", "AUDIT"]:
         # Replace spans from right to left to preserve indices
         result = text
         for d in sorted(merged, key=lambda x: x.start, reverse=True):
-            label = f"[REDACTED:{d.type}]"
+            # Clean, anonymized label (e.g. "[PERSON]" instead of "[REDACTED:person]")
+            clean_label = d.type.upper().replace(" ", "_")
+            label = f"[{clean_label}]"
             result = result[: d.start] + label + result[d.end :]
-        return result, merged, "REDACT"
+        return result, merged, action
 
-    # AUDIT or CLEAN passes the text through unchanged
+    # CLEAN passes the text through unchanged
     return text, merged, action

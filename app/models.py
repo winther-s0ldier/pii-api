@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 
 
 class CheckRequest(BaseModel):
+    session_id: str = Field(default="default_session")
     message: str = Field(..., min_length=1, max_length=10_000)
 
 
@@ -10,12 +11,14 @@ class RedactedType(BaseModel):
     type: str
     subtype: str
     confidence: str
+    value: str = ""
 
 
 class CheckResponse(BaseModel):
     action: str
     was_redacted: bool
     message: str
+    llm_reply: str = ""
     redacted_types: List[RedactedType] = []
 
 class BlockResponse(BaseModel):
@@ -45,3 +48,23 @@ BatchCheckResult = Union[CheckResult, BlockResult]
 
 class BatchCheckResponse(BaseModel):
     results: List[BatchCheckResult]
+
+from datetime import datetime
+
+class ChatSessionInfo(BaseModel):
+    id: str
+    title: str
+    created_at: datetime
+
+class SessionListResponse(BaseModel):
+    sessions: List[ChatSessionInfo]
+
+class ChatMessageInfo(BaseModel):
+    role: str
+    content: str
+    created_at: datetime
+
+class SessionDetailResponse(BaseModel):
+    id: str
+    title: str
+    messages: List[ChatMessageInfo]

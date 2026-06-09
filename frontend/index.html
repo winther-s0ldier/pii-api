@@ -1,0 +1,126 @@
+<!DOCTYPE html><html lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Alabaster Guard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries,typography"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<!-- Using local font-family fallbacks as Cabinet Grotesk/Satoshi are premium fonts, often paired with Geist/Sans-serif in these designs -->
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        colors: {
+          "primary": "#135bec",
+          "background-light": "#FDFCFB",
+          "background-dark": "#101622",
+        },
+        fontFamily: {
+          "display": ["Geist", "sans-serif"],
+          "cabinet": ["Cabinet Grotesk", "Geist", "sans-serif"],
+          "satoshi": ["Satoshi", "Geist", "sans-serif"]
+        },
+        borderRadius: {"DEFAULT": "0.5rem", "lg": "1rem", "xl": "1.5rem", "full": "9999px"},
+      },
+    },
+  }
+</script>
+<style>
+  body {
+    font-family: 'Geist', sans-serif;
+    background-color: #FDFCFB;
+  }
+  .font-cabinet { font-family: 'Cabinet Grotesk', 'Geist', sans-serif; }
+  .font-satoshi { font-family: 'Satoshi', 'Geist', sans-serif; }
+</style>
+</head>
+<body class="font-body h-screen flex antialiased bg-background-light overflow-hidden">
+
+  <aside id="sidebar" class="w-[260px] bg-[#111111] text-white flex-col transition-all duration-300 flex border-r border-gray-800 shrink-0 relative z-20">
+    <div class="p-3 flex justify-between items-center">
+      <button id="new-chat-btn" class="flex items-center gap-2 hover:bg-gray-800 p-2 rounded-lg transition-colors flex-1 text-sm font-medium">
+        <span class="material-symbols-outlined text-[18px]">add</span>
+        New Chat
+      </button>
+      <button id="sidebar-close" class="p-2 hover:bg-gray-800 rounded-lg ml-1 text-gray-400">
+         <span class="material-symbols-outlined text-[18px]">dock_to_right</span>
+      </button>
+    </div>
+    <div id="sidebar-sessions" class="flex-1 overflow-y-auto p-2">
+      <!-- Dynamically populated -->
+    </div>
+  </aside>
+  <div id="main-content-wrapper" class="flex-1 flex flex-col h-screen relative min-w-0 transition-all duration-300">
+
+<!-- Shared Component: TopNavBar wrapper -->
+<div class="relative flex h-auto min-h-screen w-full flex-col bg-[#FDFCFB] group/design-root overflow-x-hidden">
+<div class="layout-container flex  grow flex-col">
+<div class="md:px-8 lg:px-40 flex flex-1 justify-center py-5">
+<div class="layout-content-container flex flex-col w-full max-w-[768px] flex-1 relative">
+<header class="flex items-center justify-between whitespace-nowrap border-b border-solid border-b-[#f0f2f4] px-4 md:px-10 py-3">
+<div class="flex items-center gap-4 text-[#111318]">
+<div class="size-4">
+<svg fill="none" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+<g clip-path="url(#clip0_6_319)">
+<path d="M8.57829 8.57829C5.52816 11.6284 3.451 15.5145 2.60947 19.7452C1.76794 23.9758 2.19984 28.361 3.85056 32.3462C5.50128 36.3314 8.29667 39.7376 11.8832 42.134C15.4698 44.5305 19.6865 45.8096 24 45.8096C28.3135 45.8096 32.5302 44.5305 36.1168 42.134C39.7033 39.7375 42.4987 36.3314 44.1494 32.3462C45.8002 28.361 46.2321 23.9758 45.3905 19.7452C44.549 15.5145 42.4718 11.6284 39.4217 8.57829L24 24L8.57829 8.57829Z" fill="currentColor"></path>
+</g>
+<defs>
+<clipPath id="clip0_6_319"><rect fill="white" height="48" width="48"></rect></clipPath>
+</defs>
+</svg>
+</div>
+
+</div>
+</header>
+<div class="flex-1 flex flex-col items-center justify-center -mt-32">
+<div class="w-full flex flex-col items-center">
+<h1 class="text-[#111318] tracking-tight text-[40px] font-bold leading-tight px-4 text-center pb-8 font-cabinet" id="dynamic-greeting"><span class="">Greeting</span></h1>
+<!-- Centered Input Bar -->
+<div class="w-full max-w-[768px] px-4">
+<div class="relative flex items-center w-full bg-white rounded-xl border border-[#E5E5E5] shadow-[0_4px_24px_rgba(0,0,0,0.04)] focus-within:border-primary focus-within:ring-1 focus-within:ring-primary transition-all duration-200 h-[64px] px-4">
+<textarea class="flex-1  bg-transparent border-none focus:ring-0 text-slate-800 placeholder-slate-400 text-[16px] outline-none font-satoshi resize-none py-[15px] leading-tight"      placeholder="How can I help you today?" rows="1" style="max-height: 150px; overflow-y: auto;"></textarea>
+<button class="flex items-center justify-center w-[36px] h-[36px] bg-primary hover:bg-blue-700 transition-colors rounded-lg flex-shrink-0 ml-2 group">
+<span class="material-symbols-outlined text-white text-[20px]" data-icon="arrow_upward">arrow_upward</span>
+</button>
+</div>
+
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<script>
+  function updateGreeting() {
+    const now = new Date();
+    const hours = now.getHours();
+    const greetingElement = document.querySelector('#dynamic-greeting span');
+    
+    let greeting = "";
+    
+    if (hours >= 5 && hours < 12) {
+      greeting = "Good morning";
+    } else if (hours >= 12 && hours < 17) {
+      greeting = "Good afternoon";
+    } else if (hours >= 17 && hours < 22) {
+      greeting = "Good evening";
+    } else {
+      greeting = "It's late night";
+    }
+    
+    if (greetingElement) {
+      greetingElement.textContent = greeting;
+    }
+  }
+  
+  // Initial call
+  updateGreeting();
+  // Update every minute to keep it accurate
+  setInterval(updateGreeting, 60000);
+</script>
+
+
+<script src="/static/app.js?v=7"></script></div></body></html>

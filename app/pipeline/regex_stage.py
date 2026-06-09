@@ -37,7 +37,11 @@ _PATTERNS: List[_Pattern] = [
     _Pattern("bearer_token",    "bearer",      re.compile(r"(?i)bearer\s+[A-Za-z0-9\-._~+/]+=*")),
     _Pattern("password_kv",     "password",    re.compile(r"(?i)(password|passwd|pwd|secret|token|api_?key|apikey|auth_?token|auth|key|access_?code)[\'\"\s]*[:=]+[\s>]*[\'\"]?\S{6,}")),
     _Pattern("aadhar",          "tax ID",      re.compile(r"\b\d{4}[\s\-]\d{4}[\s\-]\d{4}\b(?![\s\-]\d)"), confidence="high"),
-    _Pattern("fake_cc",         "credit_card", re.compile(r"\b\d[\d\s\-]{11,17}\d\b"), confidence="high"),
+    _Pattern("pan_card",        "tax ID",      re.compile(r"\b[A-Z]{5}[0-9]{4}[A-Z]{1}\b"), confidence="high"),
+    _Pattern("voter_id",        "tax ID",      re.compile(r"\b[A-Z]{3}[0-9]{7}\b"), confidence="high"),
+    _Pattern("upi_id",          "upi",         re.compile(r"\b[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}\b"), confidence="medium"),
+    _Pattern("phone_in",        "phone",       re.compile(r"\b(?:\+91[\-\s]?)?[0]?(?:[6-9]\d{9})\b"), confidence="high"),
+    _Pattern("fake_cc",         "credit_card", re.compile(r"\b(?:\d{4}[-\s]?){3}\d{4}\b|\b\d{15,16}\b"), confidence="high"),
     _Pattern("spelled_numbers", "ssn",         re.compile(r"(?:(?:zero|one|two|three|four|five|six|seven|eight|nine)[\s\-,]*){9,}"), confidence="high"),
 ]
 
@@ -51,14 +55,16 @@ def detect(text: str) -> List[Detection]:
                 det_type = "IP address"
             elif p.name == "password_kv":
                 det_type = "password"
-            elif p.name == "phone_us":
+            elif p.name in ["phone_us", "phone_in"]:
                 det_type = "phone number"
             elif p.name == "spelled_numbers":
                 det_type = "ssn"
             elif p.name == "fake_cc":
                 det_type = "credit_card"
-            elif p.name == "aadhar":
+            elif p.name in ["aadhar", "pan_card", "voter_id"]:
                 det_type = "tax ID"
+            elif p.name == "upi_id":
+                det_type = "email"  # Treat UPI similar to email for reduction
             
             detections.append(Detection(
                 start=m.start(),

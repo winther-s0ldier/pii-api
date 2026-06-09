@@ -15,14 +15,21 @@ import torch
 device = "cuda" if torch.cuda.is_available() else "cpu"
 model = GLiNER2.from_pretrained("fastino/gliner2-privacy-filter-PII-multi").to(device)
 
+if device == "cpu":
+    import torch.quantization
+    # Apply dynamic quantization to Linear layers for 2x-4x CPU speedup
+    model = torch.quantization.quantize_dynamic(
+        model, {torch.nn.Linear}, dtype=torch.qint8
+    )
+
 # Map requested labels to descriptions for the extractor.
 LABELS = {
-    "person": "First, last, or full names of people",
+    "person": "First, last, or full names of people, including Indian names",
     "location": "Physical addresses, cities, countries, or regions",
     "organization": "Companies, institutions, or business names",
     "email": "Email addresses",
     "phone number": "Telephone or mobile numbers",
-    "physical address": "Street addresses or building locations",
+    "physical address": "Street addresses, building locations, landmarks, or 6-digit Pincodes",
     "passport number": "Government issued passport numbers",
     "driver's license": "Driver's license numbers",
     "tax ID": "Tax identification numbers",
@@ -53,7 +60,9 @@ def detect(text: str) -> List[Detection]:
             all_predictions.append(item)
             
     # Find our "Anchor" entities (Things the model is 90%+ certain about)
-    has_high_confidence_anchor = any(p.get("confidence", 0) > 0.90 for p in all_predictions)
+    # Includes tax ID to anchor on PAN / Aadhaar cards
+    anchor_labels = ["tax ID", "card number", "ssn"]
+    has_high_confidence_anchor = any(p.get("confidence", 0) > 0.90 and p["label"] in anchor_labels for p in all_predictions)
     
     # Calculate text length to penalize lack of context
     word_count = len(text.split())

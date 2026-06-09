@@ -29,3 +29,4 @@ models/
 *.safetensors
 *.bin
 .cache/
+chat.db

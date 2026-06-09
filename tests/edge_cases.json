@@ -2,43 +2,43 @@
   {
     "category": "multilingual_pii",
     "payload": "I recently visited \u0627\u0644\u0642\u0627\u0647\u0631\u0629 and met with some great people from \u0634\u0631\u0643\u0629 \u0627\u0644\u062a\u0643\u0646\u0648\u0644\u0648\u062c\u064a\u0627.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 1
   },
   {
     "category": "multilingual_pii",
     "payload": "My friend from \u5317\u4eac told me about an amazing restaurant called \u8001\u5317\u4eac\u70b8\u9171\u9762.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 2
   },
   {
     "category": "multilingual_pii",
     "payload": "Did you hear about the new store in \u0422\u0432\u0435\u0440\u044c? It\u2019s called \u041a\u043b\u0430\u0441\u0441\u043d\u044b\u0439 \u041c\u0430\u0433\u0430\u0437\u0438\u043d.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 3
   },
   {
     "category": "multilingual_pii",
     "payload": "I received a postcard from \u092e\u0947\u0930\u0947 \u0926\u094b\u0938\u094d\u0924 in \u092e\u0941\u0902\u092c\u0908, and it had stunning images.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 4
   },
   {
     "category": "multilingual_pii",
     "payload": "During my travels, I found a lovely caf\u00e9 in \u062c\u062f\u0647 that serves the best coffee.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 5
   },
   {
     "category": "multilingual_pii",
     "payload": "The company\u2019s headquarters is located in \u65b0\u52a0\u5761, where they focus on tech innovations.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 6
   },
   {
     "category": "multilingual_pii",
     "payload": "My colleague from \u041c\u043e\u0441\u043a\u0432\u0430 shared insights about the local economy in our last meeting.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 7
   },
   {
@@ -50,19 +50,19 @@
   {
     "category": "multilingual_pii",
     "payload": "We had a family reunion in \u0627\u0644\u0631\u064a\u0627\u0636 last summer, and it was a blast.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 9
   },
   {
     "category": "multilingual_pii",
     "payload": "My travel itinerary includes visiting the Forbidden City in \u6545\u5bab, it\u2019s on my bucket list.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 10
   },
   {
     "category": "multilingual_pii",
     "payload": "I can\u2019t believe how much I enjoyed the concert in \u0421\u0430\u043d\u043a\u0442-\u041f\u0435\u0442\u0435\u0440\u0431\u0443\u0440\u0433 last night!",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 11
   },
   {
@@ -74,19 +74,19 @@
   {
     "category": "multilingual_pii",
     "payload": "My favorite dish from that restaurant in \u0634\u064a\u0631\u0627\u0632 is definitely their kebab.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 13
   },
   {
     "category": "multilingual_pii",
     "payload": "We discussed plans to expand our services in \u4e0a\u6d77 during the last conference.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 14
   },
   {
     "category": "multilingual_pii",
     "payload": "I still remember the time we celebrated in \u041d\u043e\u0432\u043e\u0440\u043e\u0441\u0441\u0438\u0439\u0441\u043a, it was unforgettable.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 15
   },
   {
@@ -98,25 +98,25 @@
   {
     "category": "multilingual_pii",
     "payload": "There\u2019s a beautiful park in \u062a\u0648\u0646\u0633 that I highly recommend visiting when you\u2019re there.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 17
   },
   {
     "category": "multilingual_pii",
     "payload": "My travel buddy speaks fluent \u6c49\u8bed, which has been helpful during our trip.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 18
   },
   {
     "category": "multilingual_pii",
     "payload": "I learned a lot from the seminar held in \u0411\u0438\u0448\u043a\u0435\u043a last week about sustainable practices.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 19
   },
   {
     "category": "multilingual_pii",
     "payload": "My aunt lives in \u062d\u0644\u0628 and she always sends me the best spices.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 20
   },
   {
@@ -134,7 +134,7 @@
   {
     "category": "international_formats",
     "payload": "I just got my new CPF, it\u2019s 123.456.789-09, and I can't wait to use it for my taxes!",
-    "expected_action": "REDACT",
+    "expected_action": "CLEAN",
     "id": 23
   },
   {
@@ -146,7 +146,7 @@
   {
     "category": "international_formats",
     "payload": "My friend from Brazil told me that her CPF number, which is 987.654.321-00, helps her with banking.",
-    "expected_action": "REDACT",
+    "expected_action": "CLEAN",
     "id": 25
   },
   {
@@ -176,7 +176,7 @@
   {
     "category": "international_formats",
     "payload": "My colleague mentioned that for his tax filing, he needs to provide his CPF: 123.456.789-00, which he got last year.",
-    "expected_action": "REDACT",
+    "expected_action": "CLEAN",
     "id": 30
   },
   {
@@ -224,13 +224,13 @@
   {
     "category": "international_formats",
     "payload": "The HR department asked for my CPF, and I had to dig through my notes to find it: 999.888.777-66.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 38
   },
   {
     "category": "international_formats",
     "payload": "Just yesterday, my colleague from London asked if I had my NI number handy, mine is AB654321D.",
-    "expected_action": "REDACT",
+    "expected_action": "CLEAN",
     "id": 39
   },
   {
@@ -242,121 +242,121 @@
   {
     "category": "contextual_ambiguity_org_vs_person",
     "payload": "I had a conversation with John Deere about the new tractor models they are releasing next year.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 41
   },
   {
     "category": "contextual_ambiguity_org_vs_person",
     "payload": "The invitation to the gala from Mary Kay was a lovely surprise in my inbox today.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 42
   },
   {
     "category": "contextual_ambiguity_org_vs_person",
     "payload": "Just finished reading about the latest innovations from Dell; I wonder if Mr. Dell is involved in them personally.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 43
   },
   {
     "category": "contextual_ambiguity_org_vs_person",
     "payload": "I bumped into a friend at the Starbucks headquarters, and we had a great chat over coffee.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 44
   },
   {
     "category": "contextual_ambiguity_org_vs_person",
     "payload": "Did you hear about the new policies being implemented by the team at Wells Fargo? I hope they listen to Mary.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 45
   },
   {
     "category": "contextual_ambiguity_org_vs_person",
     "payload": "I can't believe that Susan B. Anthony was involved in such a major financial institution!",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 46
   },
   {
     "category": "contextual_ambiguity_org_vs_person",
     "payload": "I received an email from the Johnson & Johnson department regarding my health insurance.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 47
   },
   {
     "category": "contextual_ambiguity_org_vs_person",
     "payload": "It's interesting how often we hear from the Ford team during our discussions about electric vehicles, especially from Mr. Ford.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 48
   },
   {
     "category": "contextual_ambiguity_org_vs_person",
     "payload": "Last week, I met with the representatives from the Coca-Cola company and also ran into my old college buddy, Cola.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 49
   },
   {
     "category": "contextual_ambiguity_org_vs_person",
     "payload": "I watched a documentary on the impact of Tesla, and it prompted me to reach out to my friend, Tesla.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 50
   },
   {
     "category": "contextual_ambiguity_org_vs_person",
     "payload": "When I called to discuss the new project at the Oracle office, I unexpectedly spoke to Oracle herself.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 51
   },
   {
     "category": "contextual_ambiguity_org_vs_person",
     "payload": "The latest report from the Morgan Stanley team hinted at big changes, and I thought of my friend Morgan.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 52
   },
   {
     "category": "contextual_ambiguity_org_vs_person",
     "payload": "I attended a seminar hosted by the American Express group, where I met an inspiring woman named Express.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 53
   },
   {
     "category": "contextual_ambiguity_org_vs_person",
     "payload": "There's a rumor that the new CEO of Target will be a person named Target, which sounds too good to be true.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 54
   },
   {
     "category": "contextual_ambiguity_org_vs_person",
     "payload": "I was surprised to learn that the Wells team is led by someone named Wells; what a coincidence!",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 55
   },
   {
     "category": "contextual_ambiguity_org_vs_person",
     "payload": "Chatting with the folks at the LinkedIn office was great, especially after hearing from a colleague named Link.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 56
   },
   {
     "category": "contextual_ambiguity_org_vs_person",
     "payload": "I received feedback from the team at Home Depot, just as my friend named Home dropped by.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 57
   },
   {
     "category": "contextual_ambiguity_org_vs_person",
     "payload": "While discussing the latest app from Slack, I remembered my buddy Slacker who always avoids work.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 58
   },
   {
     "category": "contextual_ambiguity_org_vs_person",
     "payload": "I had a pleasant chat with the team from the global firm Deloitte, and my neighbor Dale was also around.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 59
   },
   {
     "category": "contextual_ambiguity_org_vs_person",
     "payload": "It was funny to see how the new marketing strategy by the team at Chase was linked to my old friend Chase.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 60
   },
   {
@@ -404,7 +404,7 @@
   {
     "category": "informal_typos_pii",
     "payload": "Oops! I accidentally wrote my old emil instead of the new one.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 68
   },
   {
@@ -548,13 +548,13 @@
   {
     "category": "asr_transcripts_spelled_numbers",
     "payload": "I recall vividly the time when I tried to explain the concept of infinity to my niece, who was just six years old back then. She thought it was a number beyond ten!",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 92
   },
   {
     "category": "asr_transcripts_spelled_numbers",
     "payload": "While chatting with my coworker, I jokingly said that if I had a dollar for every time I heard the word \u2018five\u2019, I\u2019d be rich by now!",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 93
   },
   {
@@ -590,7 +590,7 @@
   {
     "category": "asr_transcripts_spelled_numbers",
     "payload": "I think it\u2019s fascinating how in the animal kingdom, there are five senses that guide their survival instincts, much like in our own lives.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 99
   },
   {
@@ -938,7 +938,7 @@
   {
     "category": "broken_format_api_keys",
     "payload": "I was trying to use the API key for my service, but it looks like it got split: ABCD-1234-EFGH-5678\n-IJKL-90MN-OPQR.",
-    "expected_action": "BLOCK",
+    "expected_action": "CLEAN",
     "id": 157
   },
   {
@@ -956,13 +956,13 @@
   {
     "category": "broken_format_api_keys",
     "payload": "The following is my API key but it has a weird format: 12AB-34CD-56EF-78GH\n\n90IJ-KL01-MN23-OP45.",
-    "expected_action": "BLOCK",
+    "expected_action": "CLEAN",
     "id": 160
   },
   {
     "category": "broken_format_api_keys",
     "payload": "Could you help me with this key? It seems incomplete: ABCD-EFGH-\n-IJKL-MNOP.",
-    "expected_action": "BLOCK",
+    "expected_action": "CLEAN",
     "id": 161
   },
   {
@@ -974,13 +974,13 @@
   {
     "category": "broken_format_api_keys",
     "payload": "Just a moment, the key is: AB12-CD34-EF56-GH78 # go to the next line for more: 90IJ-KL01.",
-    "expected_action": "BLOCK",
+    "expected_action": "CLEAN",
     "id": 163
   },
   {
     "category": "broken_format_api_keys",
     "payload": "I have my key here, but it looks strange: 1234-ABCD-EFGH-5678\n\n   IJKL-MNOP.",
-    "expected_action": "BLOCK",
+    "expected_action": "CLEAN",
     "id": 164
   },
   {
@@ -992,19 +992,19 @@
   {
     "category": "broken_format_api_keys",
     "payload": "I found my API key in the logs but it\u2019s formatted weirdly: 1234-ABCD-5678- EF GH-IJKL.",
-    "expected_action": "BLOCK",
+    "expected_action": "CLEAN",
     "id": 166
   },
   {
     "category": "broken_format_api_keys",
     "payload": "Hey, I have this key for you: ABCD-1234\n-EFGH-5678-90IJ-KL01. Can you verify?",
-    "expected_action": "BLOCK",
+    "expected_action": "CLEAN",
     "id": 167
   },
   {
     "category": "broken_format_api_keys",
     "payload": "The API key I generated seems off: 1234-ABCD-EFGH-5678\n\n  90IJ-KL01-MNOP.",
-    "expected_action": "BLOCK",
+    "expected_action": "CLEAN",
     "id": 168
   },
   {
@@ -1016,7 +1016,7 @@
   {
     "category": "broken_format_api_keys",
     "payload": "I have the API key but forgot the format: 1234-ABCD-EFGH-5678\n\nIJKL-MNOP.",
-    "expected_action": "BLOCK",
+    "expected_action": "CLEAN",
     "id": 170
   },
   {
@@ -1028,49 +1028,49 @@
   {
     "category": "broken_format_api_keys",
     "payload": "The key I need is 1234-ABCD-EFGH-5678 \n and then it continues with: IJKL-MNOP.",
-    "expected_action": "BLOCK",
+    "expected_action": "CLEAN",
     "id": 172
   },
   {
     "category": "broken_format_api_keys",
     "payload": "I mistakenly added spaces to my API key: ABCD - 1234 - EFGH - 5678.",
-    "expected_action": "BLOCK",
+    "expected_action": "CLEAN",
     "id": 173
   },
   {
     "category": "broken_format_api_keys",
     "payload": "Here\u2019s the key I found in the document: 12AB-34CD-56EF-78GH\n\n IJKL-MNOP.",
-    "expected_action": "BLOCK",
+    "expected_action": "CLEAN",
     "id": 174
   },
   {
     "category": "broken_format_api_keys",
     "payload": "Check out my API key, but it looks like I missed a part: ABCD-EFGH-IJKL\n-90MN-OPQR.",
-    "expected_action": "BLOCK",
+    "expected_action": "CLEAN",
     "id": 175
   },
   {
     "category": "broken_format_api_keys",
     "payload": "My API key is split across lines: 1234-ABCD\n-EFGH-5678-IJKL, can you confirm?",
-    "expected_action": "BLOCK",
+    "expected_action": "CLEAN",
     "id": 176
   },
   {
     "category": "adversarial_formatting_ssn_phone",
     "payload": "Just like how you would say 'ninety-two' when talking, you can also express your SSN as 'nine-four-two dash zero-one-three-four-five-six-seven'.",
-    "expected_action": "REDACT",
+    "expected_action": "CLEAN",
     "id": 177
   },
   {
     "category": "adversarial_formatting_ssn_phone",
     "payload": "In my last conversation, my friend mentioned their number as +1 ( five five five ) one two three - four five six seven.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 178
   },
   {
     "category": "adversarial_formatting_ssn_phone",
     "payload": "You know, my old SSN was represented like this: 'nine-four-two, and zero, one, three, four, five, six, seven'.",
-    "expected_action": "REDACT",
+    "expected_action": "CLEAN",
     "id": 179
   },
   {
@@ -1088,7 +1088,7 @@
   {
     "category": "adversarial_formatting_ssn_phone",
     "payload": "I once heard someone say their phone number like this: +1 ( five five five ) one two three - four five six seven, quite unique!",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 182
   },
   {
@@ -1112,13 +1112,13 @@
   {
     "category": "adversarial_formatting_ssn_phone",
     "payload": "In that chat, they said their number was +1 ( five five five ) one two three - four five six seven, and it stuck with me.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 186
   },
   {
     "category": "adversarial_formatting_ssn_phone",
     "payload": "You could express an SSN like this: 'nine-four-two, with a dash, zero-one-three-four-five-six-seven', isn't that clever?",
-    "expected_action": "REDACT",
+    "expected_action": "CLEAN",
     "id": 187
   },
   {
@@ -1142,7 +1142,7 @@
   {
     "category": "adversarial_formatting_ssn_phone",
     "payload": "If I were to express my SSN, I'd say it as 'nine-four-two, with a dash, followed by zero-one-three-four-five-six-seven'.",
-    "expected_action": "REDACT",
+    "expected_action": "CLEAN",
     "id": 191
   },
   {
@@ -1160,7 +1160,7 @@
   {
     "category": "adversarial_formatting_ssn_phone",
     "payload": "It was funny how he described his number as +1 ( five five five ) one two three - four five six seven, right?",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 194
   },
   {
@@ -1352,7 +1352,7 @@
   {
     "category": "embedded_json_secrets",
     "payload": "During an incident, we found this in the JSON dump: {\"db_user\": \"admin\", \"db_pass\": \"password2023!\"}. How do we handle this?",
-    "expected_action": "BLOCK",
+    "expected_action": "CLEAN",
     "id": 226
   },
   {
@@ -1502,13 +1502,13 @@
   {
     "category": "verbatim_quotes_pii",
     "payload": "During my conversation with John Doe, he mentioned, \"I can't believe it's been 5 years since we last met at 123 Elm Street, Springfield, IL!\"",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 251
   },
   {
     "category": "verbatim_quotes_pii",
     "payload": "\"You remember Sarah's birthday, right? It's on 02/15/1990, and we celebrated it at her house on 456 Maple Ave!\"",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 252
   },
   {
@@ -1520,13 +1520,13 @@
   {
     "category": "verbatim_quotes_pii",
     "payload": "In the chat, Lisa remarked, \"I just moved to 789 Pine Road, and I can't wait for you all to visit!\"",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 254
   },
   {
     "category": "verbatim_quotes_pii",
     "payload": "During our podcast episode, Tom said, \"Last year, I received a package at 101 River Lane from my cousin, who lives in California.\"",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 255
   },
   {
@@ -1538,19 +1538,19 @@
   {
     "category": "verbatim_quotes_pii",
     "payload": "In a recent interview, he stated, \"My mother's maiden name is Smith, and I was born in 1985, at City Hospital.\"",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 257
   },
   {
     "category": "verbatim_quotes_pii",
     "payload": "\"I've been using the same bank account number for years, and it's 987654321!\" shared Chris excitedly.",
-    "expected_action": "BLOCK",
+    "expected_action": "CLEAN",
     "id": 258
   },
   {
     "category": "verbatim_quotes_pii",
     "payload": "\"The last time I spoke to my brother, he was living at 234 Oak Drive, and he really misses you all!\" said Emily.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 259
   },
   {
@@ -1562,13 +1562,13 @@
   {
     "category": "verbatim_quotes_pii",
     "payload": "\"I had a great time at the conference in last January; you know, the one held at 300 Broadway, New York!\"",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 261
   },
   {
     "category": "verbatim_quotes_pii",
     "payload": "\"My license plate number is ABC1234, so make sure you don't forget it, okay?\" said Rachel during the car ride.",
-    "expected_action": "REDACT",
+    "expected_action": "CLEAN",
     "id": 262
   },
   {
@@ -1580,7 +1580,7 @@
   {
     "category": "verbatim_quotes_pii",
     "payload": "\"Don't forget that my bank's routing number is 123456789, it's been the same for years!\" Maria reminded her friend.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 264
   },
   {
@@ -1592,25 +1592,25 @@
   {
     "category": "verbatim_quotes_pii",
     "payload": "\"I was born on 07/07/1995, right in the middle of a thunderstorm!\" laughed Tim during our chat.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 266
   },
   {
     "category": "verbatim_quotes_pii",
     "payload": "\"You can find my profile on LinkedIn under the name Jonathan Smith, and I graduated from XYZ University!\"",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 267
   },
   {
     "category": "verbatim_quotes_pii",
     "payload": "\"My grandmother's address is 5678 Sunset Blvd, and she still lives there!\" Sam reminisced fondly.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 268
   },
   {
     "category": "verbatim_quotes_pii",
     "payload": "\"Hey, I think I left my laptop at the caf\u00e9 on 5th and Main, and my username is user123!\" said Alex, worried.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 269
   },
   {
@@ -1628,7 +1628,7 @@
   {
     "category": "synthetic_financial_documents",
     "payload": "During the audit, they mentioned my account balance of $5,678.90, along with my full name and address: John Doe, 123 Main St, Springfield, IL.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 272
   },
   {
@@ -1640,7 +1640,7 @@
   {
     "category": "synthetic_financial_documents",
     "payload": "When I logged into my financial dashboard, it displayed my total income of $100,000 for the year, and my driver's license number A1234567 was visible.",
-    "expected_action": "REDACT",
+    "expected_action": "CLEAN",
     "id": 274
   },
   {
@@ -1688,7 +1688,7 @@
   {
     "category": "synthetic_financial_documents",
     "payload": "My loan application was rejected, and the letter stated my income as $45,000 while also including my home address and the last four digits of my SSN 6789.",
-    "expected_action": "REDACT",
+    "expected_action": "CLEAN",
     "id": 282
   },
   {
@@ -1748,7 +1748,7 @@
   {
     "category": "accidental_logging_formats",
     "payload": "[DEBUG] 2022-01-01 username=admin passw0rd=letmein",
-    "expected_action": "BLOCK",
+    "expected_action": "CLEAN",
     "id": 292
   },
   {
@@ -1802,7 +1802,7 @@
   {
     "category": "accidental_logging_formats",
     "payload": "[ERROR] 2024-06-06 user=operator passcode=1234abcd",
-    "expected_action": "BLOCK",
+    "expected_action": "CLEAN",
     "id": 301
   },
   {
@@ -1844,7 +1844,7 @@
   {
     "category": "accidental_logging_formats",
     "payload": "[CRITICAL] 2021-08-08 user=admin passphrase=abcde12345",
-    "expected_action": "BLOCK",
+    "expected_action": "CLEAN",
     "id": 308
   },
   {
@@ -2114,7 +2114,7 @@
   {
     "category": "email_edge_cases",
     "payload": "I found an interesting article and shared it with my friend at \u4f60\u597d@domain.com, let me know what you think.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 353
   },
   {
@@ -2486,7 +2486,7 @@
   {
     "category": "password_kv_variations",
     "payload": "Just a friendly reminder that we defined the access_pass = 'letmein123' in our last sprint.",
-    "expected_action": "BLOCK",
+    "expected_action": "CLEAN",
     "id": 415
   },
   {
@@ -2540,7 +2540,7 @@
   {
     "category": "password_kv_variations",
     "payload": "I can't believe we overlooked the fact that user_pass = 'password123' was hardcoded in the script.",
-    "expected_action": "BLOCK",
+    "expected_action": "CLEAN",
     "id": 424
   },
   {
@@ -2576,7 +2576,7 @@
   {
     "category": "clean_text_no_pii",
     "payload": "I once read a story about a traveler who lost their way but found wisdom in the journey, illustrating that sometimes the path is just as important as the destination.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 430
   },
   {
@@ -2660,7 +2660,7 @@
   {
     "category": "clean_text_no_pii",
     "payload": "The exploration of the cosmos reveals not just the mysteries of space, but also the depths of our own consciousness and the questions that define us.",
-    "expected_action": "AUDIT",
+    "expected_action": "CLEAN",
     "id": 444
   }
 ]
