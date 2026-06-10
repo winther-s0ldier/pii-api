@@ -30,3 +30,5 @@ models/
 *.bin
 .cache/
 chat.db
+*.db-shm
+*.db-wal

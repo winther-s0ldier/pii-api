@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Shield, Plus, PanelLeft, Send, CheckCircle2, ShieldAlert, X, ShieldBan, MessageSquare, Trash2 } from 'lucide-react';
+import { Shield, Plus, PanelLeft, Send, CheckCircle2, ShieldAlert, X, ShieldBan, MessageSquare, Trash2, HatGlasses } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { driver } from "driver.js";
 import "driver.js/dist/driver.css";
@@ -189,7 +189,8 @@ export default function ChatPage() {
           id: `db-${i}`,
           role: m.role,
           content: m.content,
-          status: 'clear'
+          status: 'clear',
+          redactedTypes: m.redacted_types
         })));
       }
     } catch (err) {
@@ -464,12 +465,13 @@ export default function ChatPage() {
     }
   };
 
+
   if (!isAuthenticated) {
     return (
       <div className="flex items-center justify-center h-screen bg-[#FAF9F5] font-sans text-[#2A1F1A]">
         <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-sm border border-[#E0D9C8]">
           <div className="flex justify-center mb-6 text-primary">
-            <Shield size={48} strokeWidth={1.5} />
+            <img src="/logo-t.png" alt="ADOPSHUN AI Logo" className="h-12 w-auto object-contain" />
           </div>
           <h2 className="text-2xl font-bold text-center mb-6">Secure Login</h2>
           <form onSubmit={handleLogin} className="space-y-4">
@@ -508,6 +510,12 @@ export default function ChatPage() {
               Sign In
             </button>
           </form>
+
+          <div className="mt-6 text-center">
+            <a href="/admin/login" className="text-xs text-muted-foreground hover:text-primary transition-colors inline-flex items-center gap-1">
+              <ShieldAlert size={12} /> Admin Login
+            </a>
+          </div>
         </div>
       </div>
     );
@@ -542,7 +550,10 @@ export default function ChatPage() {
           isSidebarOpen ? "opacity-100" : "opacity-0 pointer-events-none"
         )}>
           <div className="p-3 flex items-center justify-between">
-            <div className="font-semibold text-foreground px-2">PII Chat</div>
+            <div className="font-semibold text-foreground px-2 flex items-center gap-2">
+              <img src="/logo-t.png" alt="Logo" className="h-5 w-auto" />
+              ADOPSHUN AI
+            </div>
             <button 
               onClick={() => setIsSidebarOpen(false)}
               className="p-2 hover:bg-black/5 rounded-lg text-muted-foreground hover:text-foreground transition-all shrink-0"
@@ -658,6 +669,15 @@ export default function ChatPage() {
               </button>
             )}
           </div>
+          <div className="flex items-center gap-2">
+            <a 
+              href="/admin/login" 
+              className="p-2 hover:bg-black/5 rounded-full text-muted-foreground hover:text-primary transition-colors flex items-center justify-center"
+              title="Admin Login"
+            >
+              <HatGlasses size={20} />
+            </a>
+          </div>
         </header>
 
         <div className="flex-1 overflow-y-auto px-4 py-6 flex flex-col">
@@ -723,8 +743,8 @@ export default function ChatPage() {
                   )}
                 >
                   {msg.role === 'model' && (
-                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mr-3 border border-primary/20">
-                      <Shield size={16} className="text-primary" />
+                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mr-3 border border-primary/20 overflow-hidden">
+                      <img src="/logo-t.png" alt="ADOPSHUN AI" className="w-5 h-5 object-contain" />
                     </div>
                   )}
                   
@@ -772,7 +792,7 @@ export default function ChatPage() {
                            msg.status === 'sending' ? (
                              <div className="flex items-center gap-2 text-primary py-0.5 text-[14px] font-medium">
                                <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }}>
-                                  <Shield size={15} />
+                                  <img src="/logo-t.png" alt="Loading" className="w-4 h-4 object-contain" />
                                </motion.div>
                                {loadingStates[loadingIndex]}
                              </div>
@@ -791,7 +811,7 @@ export default function ChatPage() {
                     {msg.status === 'sending' && msg.role === 'user' && (
                       <div className="text-[11px] text-muted-foreground mt-1 flex items-center justify-end gap-1">
                         <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }}>
-                           <Shield size={12} />
+                           <img src="/logo-t.png" alt="Loading" className="w-3 h-3 object-contain opacity-70" />
                         </motion.div>
                         {loadingStates[loadingIndex]}
                       </div>

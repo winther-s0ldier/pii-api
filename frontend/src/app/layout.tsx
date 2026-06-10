@@ -1,22 +1,23 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter, Poppins } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const poppins = Poppins({
+  variable: "--font-poppins",
+  weight: ["400", "500", "600", "700"],
   subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
-  title: "PII Chat",
-  description: "Secure chat application with real-time PII redaction.",
+  title: "ADOPSHUN AI",
+  description: "Secure enterprise AI communication platform.",
   icons: {
-    icon: "/favicon.png",
+    icon: "/logo-t.png",
   },
 };
 
@@ -28,9 +29,9 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${inter.variable} ${poppins.variable} h-full antialiased font-sans`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col font-sans">{children}</body>
     </html>
   );
 }

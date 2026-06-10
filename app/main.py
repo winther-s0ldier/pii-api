@@ -7,11 +7,15 @@ import os
 from dotenv import load_dotenv
 load_dotenv(override=True)
 
-from app.models import CheckRequest, CheckResponse, BlockResponse, RedactedType, SessionListResponse, SessionDetailResponse, ChatSessionInfo, ChatMessageInfo
+from app.models import (
+    CheckRequest, CheckResponse, BlockResponse, RedactedType,
+    SessionListResponse, SessionDetailResponse, ChatSessionInfo, ChatMessageInfo,
+    TierConfigUpdate, TierConfigResponse, StatsResponse, StatCount
+)
 from app.pipeline import pipeline
 from app.pipeline import regex_stage
-from app.config import get_block_warning
-from app.db import init_db, get_db, ChatSession, ChatMessage
+from app.config import get_block_warning, TIER_BLOCK, TIER_REDACT, TIER_AUDIT
+from app.db import init_db, get_db, ChatSession, ChatMessage, UserConfig, StatLog
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -44,7 +48,7 @@ app = FastAPI(
 @app.on_event("startup")
 async def startup_event():
     global pipeline_semaphore
-    pipeline_semaphore = asyncio.Semaphore(1)
+    pipeline_semaphore = asyncio.Semaphore(20)
 
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -72,9 +76,45 @@ async def check_message(request: Request, body: CheckRequest, db: Session = Depe
     from fastapi.responses import StreamingResponse
     from app.config import TIER_BLOCK
 
+    user_config = db.query(UserConfig).filter(UserConfig.user_id == body.user_id).first()
+    from app.db import CustomLabel
+    custom_labels = db.query(CustomLabel).all()
+
+    if user_config:
+        tier_config = {
+            "block": set(json.loads(user_config.tier_block)),
+            "redact": set(json.loads(user_config.tier_redact)),
+            "audit": set(json.loads(user_config.tier_audit))
+        }
+    else:
+        from app.config import TIER_BLOCK, TIER_REDACT, TIER_AUDIT
+        tier_config = {"block": set(TIER_BLOCK), "redact": set(TIER_REDACT), "audit": set(TIER_AUDIT)}
+
+    for cl in custom_labels:
+        if cl.tier == "tier_block":
+            tier_config["block"].add(cl.name)
+        elif cl.tier == "tier_redact":
+            tier_config["redact"].add(cl.name)
+        elif cl.tier == "tier_audit":
+            tier_config["audit"].add(cl.name)
+
     # 1. Async Pipeline Check
     async with pipeline_semaphore:
-        processed_text, detections, action = await asyncio.to_thread(pipeline.run, body.message, body.allowed_pii, body.ignored_values)
+        processed_text, detections, action = await asyncio.to_thread(pipeline.run, body.message, body.allowed_pii, body.ignored_values, tier_config, custom_labels)
+    
+    # Log stat
+    detected_types_list = [d.type for d in detections]
+    flagged_sequences_list = [body.message[d.start:d.end] for d in detections]
+    stat_log = StatLog(
+        user_id=body.user_id,
+        session_id=body.session_id,
+        action=action,
+        detected_types=json.dumps(detected_types_list),
+        flagged_sequences=json.dumps(flagged_sequences_list),
+        original_message=body.message if action in ["BLOCK", "REDACT"] else None
+    )
+    db.add(stat_log)
+    db.commit()
     
     redacted_types_dicts = [
         {
@@ -87,7 +127,8 @@ async def check_message(request: Request, body: CheckRequest, db: Session = Depe
     ]
     
     if action == "BLOCK":
-        blocked_types = [d.type for d in detections if d.type in TIER_BLOCK]
+        block_set = tier_config["block"] if tier_config else TIER_BLOCK
+        blocked_types = [d.type for d in detections if d.type in block_set]
         primary_type = blocked_types[0] if blocked_types else "code"
         
         raise HTTPException(
@@ -108,7 +149,12 @@ async def check_message(request: Request, body: CheckRequest, db: Session = Depe
         db.add(db_session)
         db.commit()
 
-    user_msg = ChatMessage(session_id=session_id, role="user", content=processed_text)
+    user_msg = ChatMessage(
+        session_id=session_id, 
+        role="user", 
+        content=processed_text,
+        redacted_types=json.dumps(redacted_types_dicts)
+    )
     db.add(user_msg)
     db.commit()
 
@@ -177,9 +223,44 @@ from app.models import BatchCheckRequest, BatchCheckResponse, CheckResult, Block
 
 @app.post("/api/v1/preview", response_model=Union[CheckResult, BlockResult])
 @limiter.limit("30/minute")
-async def preview_message(request: Request, body: CheckRequest, credentials: HTTPBasicCredentials = Depends(verify_credentials)):
+async def preview_message(request: Request, body: CheckRequest, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
+    import json
+    user_config = db.query(UserConfig).filter(UserConfig.user_id == body.user_id).first()
+    from app.db import CustomLabel
+    custom_labels = db.query(CustomLabel).all()
+
+    if user_config:
+        tier_config = {
+            "block": set(json.loads(user_config.tier_block)),
+            "redact": set(json.loads(user_config.tier_redact)),
+            "audit": set(json.loads(user_config.tier_audit))
+        }
+    else:
+        from app.config import TIER_BLOCK, TIER_REDACT, TIER_AUDIT
+        tier_config = {"block": set(TIER_BLOCK), "redact": set(TIER_REDACT), "audit": set(TIER_AUDIT)}
+
+    for cl in custom_labels:
+        if cl.tier == "tier_block":
+            tier_config["block"].add(cl.name)
+        elif cl.tier == "tier_redact":
+            tier_config["redact"].add(cl.name)
+        elif cl.tier == "tier_audit":
+            tier_config["audit"].add(cl.name)
+
     async with pipeline_semaphore:
-        processed_text, detections, action = await asyncio.to_thread(pipeline.run, body.message, body.allowed_pii, body.ignored_values)
+        processed_text, detections, action = await asyncio.to_thread(pipeline.run, body.message, body.allowed_pii, body.ignored_values, tier_config, custom_labels)
+        
+    detected_types_list = [d.type for d in detections]
+    flagged_sequences_list = [body.message[d.start:d.end] for d in detections]
+    stat_log = StatLog(
+        user_id=body.user_id,
+        session_id=body.session_id,
+        action=action,
+        detected_types=json.dumps(detected_types_list),
+        flagged_sequences=json.dumps(flagged_sequences_list)
+    )
+    db.add(stat_log)
+    db.commit()
         
     redacted_types = [
         RedactedType(type=d.type, subtype=d.subtype, confidence=d.confidence, value=body.message[d.start:d.end])
@@ -187,8 +268,8 @@ async def preview_message(request: Request, body: CheckRequest, credentials: HTT
     ]
     
     if action == "BLOCK":
-        from app.config import TIER_BLOCK
-        blocked_types = [d.type for d in detections if d.type in TIER_BLOCK]
+        block_set = tier_config["block"] if tier_config else TIER_BLOCK
+        blocked_types = [d.type for d in detections if d.type in block_set]
         primary_type = blocked_types[0] if blocked_types else "code"
         
         return BlockResult(
@@ -216,10 +297,21 @@ def get_session(session_id: str, db: Session = Depends(get_db), credentials: HTT
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     messages = db.query(ChatMessage).filter(ChatMessage.session_id == session_id).order_by(ChatMessage.created_at).all()
+    
+    import json
+    msg_infos = []
+    for m in messages:
+        rt = []
+        if m.redacted_types:
+            try:
+                rt = json.loads(m.redacted_types)
+            except: pass
+        msg_infos.append(ChatMessageInfo(role=m.role, content=m.content, created_at=m.created_at, redacted_types=rt))
+        
     return SessionDetailResponse(
         id=session.id,
         title=session.title,
-        messages=[ChatMessageInfo(role=m.role, content=m.content, created_at=m.created_at) for m in messages]
+        messages=msg_infos
     )
 
 @app.delete("/api/v1/sessions/{session_id}")
@@ -236,11 +328,36 @@ from app.models import BatchCheckRequest, BatchCheckResponse, CheckResult, Block
 
 @app.post("/api/v1/check_batch", response_model=BatchCheckResponse)
 @limiter.limit("10/minute")
-def check_message_batch(request: Request, body: BatchCheckRequest, credentials: HTTPBasicCredentials = Depends(verify_credentials)):
-    from app.config import TIER_BLOCK
+def check_message_batch(request: Request, body: BatchCheckRequest, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
+    import json
+    user_config = db.query(UserConfig).filter(UserConfig.user_id == body.user_id).first()
+    tier_config = None
+    if user_config:
+        tier_config = {
+            "block": set(json.loads(user_config.tier_block)),
+            "redact": set(json.loads(user_config.tier_redact)),
+            "audit": set(json.loads(user_config.tier_audit))
+        }
+
+    from app.db import CustomLabel
+    custom_labels = db.query(CustomLabel).all()
+
     results = []
     for msg in body.messages:
-        processed_text, detections, action = pipeline.run(msg, body.allowed_pii, body.ignored_values)
+        processed_text, detections, action = pipeline.run(msg, body.allowed_pii, [], tier_config, custom_labels)
+        
+        detected_types_list = [d.type for d in detections]
+        flagged_sequences_list = [msg[d.start:d.end] for d in detections]
+        stat_log = StatLog(
+            user_id=body.user_id,
+            session_id="batch",
+            action=action,
+            detected_types=json.dumps(detected_types_list),
+            flagged_sequences=json.dumps(flagged_sequences_list),
+            original_message=body.message if action in ["BLOCK", "REDACT"] else None
+        )
+        db.add(stat_log)
+        db.commit()
         
         redacted_types = [
             RedactedType(type=d.type, subtype=d.subtype, confidence=d.confidence)
@@ -248,7 +365,8 @@ def check_message_batch(request: Request, body: BatchCheckRequest, credentials: 
         ]
         
         if action == "BLOCK":
-            blocked_types = [d.type for d in detections if d.type in TIER_BLOCK]
+            block_set = tier_config["block"] if tier_config else TIER_BLOCK
+            blocked_types = [d.type for d in detections if d.type in block_set]
             primary_type = blocked_types[0] if blocked_types else "code"
             
             results.append(BlockResult(
@@ -269,6 +387,120 @@ def check_message_batch(request: Request, body: BatchCheckRequest, credentials: 
 def health():
     return {"status": "ok"}
 
+@app.get("/api/v1/admin/config/{user_id}", response_model=TierConfigResponse)
+def get_user_config(user_id: str, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
+    import json
+    user_config = db.query(UserConfig).filter(UserConfig.user_id == user_id).first()
+    if not user_config:
+        return TierConfigResponse(
+            user_id=user_id,
+            tier_block=list(TIER_BLOCK),
+            tier_redact=list(TIER_REDACT),
+            tier_audit=list(TIER_AUDIT)
+        )
+    return TierConfigResponse(
+        user_id=user_id,
+        tier_block=json.loads(user_config.tier_block),
+        tier_redact=json.loads(user_config.tier_redact),
+        tier_audit=json.loads(user_config.tier_audit)
+    )
+
+@app.post("/api/v1/admin/config/{user_id}")
+def update_user_config(user_id: str, body: TierConfigUpdate, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
+    import json
+    user_config = db.query(UserConfig).filter(UserConfig.user_id == user_id).first()
+    if not user_config:
+        user_config = UserConfig(user_id=user_id)
+        db.add(user_config)
+    
+    user_config.tier_block = json.dumps(body.tier_block)
+    user_config.tier_redact = json.dumps(body.tier_redact)
+    user_config.tier_audit = json.dumps(body.tier_audit)
+    db.commit()
+    return {"status": "updated"}
+
+from typing import Optional
+from datetime import datetime
+
+@app.get("/api/v1/admin/stats", response_model=StatsResponse)
+def get_global_stats(start_time: Optional[datetime] = None, end_time: Optional[datetime] = None, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
+    from sqlalchemy import func
+    import json
+    from collections import Counter
+    
+    query = db.query(StatLog)
+    if start_time:
+        query = query.filter(StatLog.created_at >= start_time)
+    if end_time:
+        query = query.filter(StatLog.created_at <= end_time)
+        
+    total = query.with_entities(func.count(StatLog.id)).scalar() or 0
+    actions = query.with_entities(StatLog.action, func.count(StatLog.id)).group_by(StatLog.action).all()
+    
+    type_counts = Counter()
+    seq_counts = Counter()
+    for log in query.with_entities(StatLog.detected_types, StatLog.flagged_sequences).all():
+        types = json.loads(log[0])
+        type_counts.update(types)
+        if log[1]:
+            seqs = json.loads(log[1])
+            seq_counts.update(seqs)
+            
+    top_seqs = seq_counts.most_common(10)
+        
+    return StatsResponse(
+        total_requests=total,
+        actions=[StatCount(name=a[0], count=a[1]) for a in actions],
+        detected_types=[StatCount(name=k, count=v) for k, v in type_counts.items()],
+        top_sequences=[StatCount(name=k, count=v) for k, v in top_seqs]
+    )
+
+@app.get("/api/v1/admin/stats/{user_id}", response_model=StatsResponse)
+def get_user_stats(user_id: str, start_time: Optional[datetime] = None, end_time: Optional[datetime] = None, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
+    from sqlalchemy import func
+    import json
+    from collections import Counter
+    
+    base_query = db.query(StatLog).filter(StatLog.user_id == user_id)
+    if start_time:
+        base_query = base_query.filter(StatLog.created_at >= start_time)
+    if end_time:
+        base_query = base_query.filter(StatLog.created_at <= end_time)
+        
+    total = base_query.with_entities(func.count(StatLog.id)).scalar() or 0
+    actions = base_query.with_entities(StatLog.action, func.count(StatLog.id)).group_by(StatLog.action).all()
+    
+    type_counts = Counter()
+    seq_counts = Counter()
+    for log in base_query.with_entities(StatLog.detected_types, StatLog.flagged_sequences).all():
+        types = json.loads(log[0])
+        type_counts.update(types)
+        if log[1]:
+            seqs = json.loads(log[1])
+            seq_counts.update(seqs)
+            
+    top_seqs = seq_counts.most_common(10)
+        
+    return StatsResponse(
+        total_requests=total,
+        actions=[StatCount(name=a[0], count=a[1]) for a in actions],
+        detected_types=[StatCount(name=k, count=v) for k, v in type_counts.items()],
+        top_sequences=[StatCount(name=k, count=v) for k, v in top_seqs]
+    )
+
+@app.get("/api/v1/admin/logs/{user_id}")
+def get_user_logs(user_id: str, limit: int = 50, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
+    logs = db.query(StatLog).filter(StatLog.user_id == user_id).order_by(StatLog.created_at.desc()).limit(limit).all()
+    import json
+    return [{
+        "id": log.id,
+        "action": log.action,
+        "detected_types": json.loads(log.detected_types),
+        "flagged_sequences": json.loads(log.flagged_sequences) if log.flagged_sequences else [],
+        "original_message": log.original_message,
+        "created_at": log.created_at.isoformat()
+    } for log in logs]
+
 
 @app.get("/api/v1/patterns")
 def list_patterns():
@@ -281,3 +513,322 @@ def list_patterns():
         ],
         "regex_patterns": [p.name for p in regex_stage._PATTERNS],
     }
+
+from app.models import CustomLabelCreate, CustomLabelResponse
+from app.db import CustomLabel
+
+@app.post("/api/v1/admin/custom_labels", response_model=CustomLabelResponse)
+def create_custom_label(label: CustomLabelCreate, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
+    import json
+    existing = db.query(CustomLabel).filter(CustomLabel.name == label.name).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Label already exists")
+    
+    dump_data = label.model_dump()
+    dump_data["dictionary_words"] = json.dumps(dump_data.get("dictionary_words", []))
+    
+    # Generate Regex using Gemini (if api key is present)
+    api_key = os.getenv("GEMINI_API_KEY", "").strip('"').strip("'")
+    if api_key:
+        try:
+            from google.genai import types
+            import google.genai as genai
+            client = genai.Client(api_key=api_key)
+            words_context = ""
+            if label.dictionary_words:
+                words_context = f" Examples to match: {', '.join(label.dictionary_words)}."
+            prompt = f"Generate ONLY a python regex string to match the PII entity '{label.name}'. Description: '{label.description}'.{words_context} Do not include markdown blocks, slashes, or explanations. Just the raw regex pattern. Make it strict to avoid false positives."
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt,
+            )
+            dump_data["regex_pattern"] = response.text.strip().strip('`').strip()
+        except Exception as e:
+            print("Gemini Regex Generation Failed:", e)
+    
+    db_label = CustomLabel(**dump_data)
+    db.add(db_label)
+    db.commit()
+    db.refresh(db_label)
+    
+    try:
+        words = json.loads(db_label.dictionary_words)
+    except:
+        words = []
+        
+    return {
+        "id": db_label.id,
+        "name": db_label.name,
+        "description": db_label.description,
+        "tier": db_label.tier,
+        "regex_pattern": db_label.regex_pattern,
+        "dictionary_words": words,
+        "created_at": db_label.created_at
+    }
+
+@app.get("/api/v1/admin/custom_labels", response_model=list[CustomLabelResponse])
+def get_custom_labels(db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
+    import json
+    labels = db.query(CustomLabel).all()
+    results = []
+    for lbl in labels:
+        try:
+            words = json.loads(lbl.dictionary_words)
+        except:
+            words = []
+        results.append({
+            "id": lbl.id,
+            "name": lbl.name,
+            "description": lbl.description,
+            "tier": lbl.tier,
+            "regex_pattern": lbl.regex_pattern,
+            "dictionary_words": words,
+            "created_at": lbl.created_at
+        })
+    return results
+
+@app.delete("/api/v1/admin/custom_labels/{label_id}")
+def delete_custom_label(label_id: int, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
+    db_label = db.query(CustomLabel).filter(CustomLabel.id == label_id).first()
+    if not db_label:
+        raise HTTPException(status_code=404, detail="Label not found")
+    db.delete(db_label)
+    db.commit()
+    return {"status": "deleted"}
+
+from pydantic import BaseModel
+class CustomLabelUpdate(BaseModel):
+    dictionary_words: list[str]
+
+@app.put("/api/v1/admin/custom_labels/{label_id}", response_model=CustomLabelResponse)
+def update_custom_label(label_id: int, update: CustomLabelUpdate, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
+    import json
+    db_label = db.query(CustomLabel).filter(CustomLabel.id == label_id).first()
+    if not db_label:
+        raise HTTPException(status_code=404, detail="Label not found")
+        
+    db_label.dictionary_words = json.dumps(update.dictionary_words)
+    db.commit()
+    db.refresh(db_label)
+    
+    try:
+        words = json.loads(db_label.dictionary_words)
+    except:
+        words = []
+        
+    return {
+        "id": db_label.id,
+        "name": db_label.name,
+        "description": db_label.description,
+        "tier": db_label.tier,
+        "regex_pattern": db_label.regex_pattern,
+        "dictionary_words": words,
+        "created_at": db_label.created_at
+    }
+
+from fastapi import UploadFile, File
+from fastapi.responses import StreamingResponse
+import csv
+import io
+
+@app.get("/api/v1/admin/custom_labels/xlsx")
+def export_custom_labels_xlsx(db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
+    import openpyxl
+    from openpyxl.worksheet.datavalidation import DataValidation
+    import io
+    
+    labels = db.query(CustomLabel).all()
+    
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Entity Labels"
+    
+    headers = ["Name", "Description", "Tier"]
+    ws.append(headers)
+    
+    for lbl in labels:
+        ws.append([lbl.name, lbl.description, lbl.tier])
+        
+    dv = DataValidation(type="list", formula1='"tier_block,tier_redact,tier_audit"', allow_blank=False)
+    ws.add_data_validation(dv)
+    dv.add('C2:C1000')
+    
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=entity_labels.xlsx"}
+    )
+
+@app.get("/api/v1/admin/dictionary/xlsx")
+def export_dictionary_xlsx(db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
+    import json
+    import openpyxl
+    from openpyxl.worksheet.datavalidation import DataValidation
+    import io
+    
+    labels = db.query(CustomLabel).all()
+    
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Dictionary Labels"
+    
+    headers = ["Name", "Description", "Tier", "Dictionary Words"]
+    ws.append(headers)
+    
+    for lbl in labels:
+        try:
+            words = json.loads(lbl.dictionary_words)
+        except:
+            words = []
+        ws.append([lbl.name, lbl.description, lbl.tier, ", ".join(words)])
+        
+    dv = DataValidation(type="list", formula1='"tier_block,tier_redact,tier_audit"', allow_blank=False)
+    ws.add_data_validation(dv)
+    dv.add('C2:C1000')
+    
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=dictionary_labels.xlsx"}
+    )
+
+@app.post("/api/v1/admin/custom_labels/import/preview")
+async def import_custom_labels_xlsx_preview(file: UploadFile = File(...), db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
+    import openpyxl
+    import io
+    import os
+    import json
+    from google.genai import types
+    import google.genai as genai
+    from pydantic import BaseModel
+    
+    class TierResponse(BaseModel):
+        tier: str
+        
+    content = await file.read()
+    wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
+    ws = wb.active
+    
+    rows = list(ws.rows)
+    if not rows:
+        raise HTTPException(status_code=400, detail="Empty Excel file.")
+        
+    header = [cell.value for cell in rows[0]]
+    if "Name" not in header:
+        raise HTTPException(status_code=400, detail="Invalid Excel format. Missing 'Name' header.")
+        
+    api_key = os.getenv("GEMINI_API_KEY", "").strip('"').strip("'")
+    client = genai.Client(api_key=api_key) if api_key else None
+    
+    results = []
+    
+    for row in rows[1:]:
+        row_values = [cell.value for cell in row]
+        if not row_values or not row_values[0]:
+            continue
+            
+        name = str(row_values[0]).strip()
+        description = str(row_values[1]).strip() if len(row_values) > 1 and row_values[1] else ""
+        tier = str(row_values[2]).strip() if len(row_values) > 2 and row_values[2] else ""
+        words_str = str(row_values[3]).strip() if len(row_values) > 3 and row_values[3] else ""
+        
+        words = [w.strip() for w in words_str.split(",")] if words_str else []
+        
+        # Determine if it's new
+        existing = db.query(CustomLabel).filter(CustomLabel.name == name).first()
+        is_new = existing is None
+        
+        # If tier is missing, use Gemini to strictly predict it
+        if not tier or tier not in ["tier_block", "tier_redact", "tier_audit"]:
+            if client:
+                try:
+                    prompt = f"Assign a tier for the PII entity '{name}'. Description: '{description}'. You MUST choose one of: tier_block, tier_redact, tier_audit."
+                    response = client.models.generate_content(
+                        model='gemini-2.5-flash',
+                        contents=prompt,
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json",
+                            response_schema=TierResponse,
+                            temperature=0.0
+                        )
+                    )
+                    tier_data = json.loads(response.text)
+                    tier = tier_data.get("tier", "tier_audit")
+                    if tier not in ["tier_block", "tier_redact", "tier_audit"]:
+                        tier = "tier_audit"
+                except Exception as e:
+                    print("Gemini Tier Prediction Failed:", e)
+                    tier = "tier_audit"
+            else:
+                tier = "tier_audit"
+                
+        results.append({
+            "name": name,
+            "description": description,
+            "tier": tier,
+            "dictionary_words": words,
+            "is_new": is_new
+        })
+        
+    return {"preview": results}
+
+class ImportConfirmPayload(BaseModel):
+    items: list[dict]
+
+@app.post("/api/v1/admin/custom_labels/import/confirm")
+def import_custom_labels_xlsx_confirm(payload: ImportConfirmPayload, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
+    import json
+    import os
+    from google.genai import types
+    import google.genai as genai
+    
+    api_key = os.getenv("GEMINI_API_KEY", "").strip('"').strip("'")
+    client = genai.Client(api_key=api_key) if api_key else None
+    
+    imported_count = 0
+    for item in payload.items:
+        name = item.get("name")
+        description = item.get("description", "")
+        tier = item.get("tier", "tier_audit")
+        words = item.get("dictionary_words", [])
+        
+        existing = db.query(CustomLabel).filter(CustomLabel.name == name).first()
+        if existing:
+            existing.description = description
+            existing.tier = tier
+            existing.dictionary_words = json.dumps(words)
+        else:
+            regex_pattern = ""
+            if not words and client:
+                try:
+                    prompt = f"Generate ONLY a python regex string to match the PII entity '{name}'. Description: '{description}'. Do not include markdown blocks, slashes, or explanations. Just the raw regex pattern."
+                    response = client.models.generate_content(
+                        model='gemini-2.5-flash',
+                        contents=prompt,
+                    )
+                    regex_pattern = response.text.strip()
+                except Exception as e:
+                    print("Gemini Regex Generation Failed:", e)
+                    
+            db_label = CustomLabel(
+                name=name,
+                description=description,
+                tier=tier,
+                dictionary_words=json.dumps(words),
+                regex_pattern=regex_pattern
+            )
+            db.add(db_label)
+        imported_count += 1
+        
+    db.commit()
+    return {"status": "success", "imported": imported_count}
+
+

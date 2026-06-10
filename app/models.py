@@ -1,8 +1,9 @@
-from typing import List
+from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 
 
 class CheckRequest(BaseModel):
+    user_id: str = Field(default="default_user")
     session_id: str = Field(default="default_session")
     message: str = Field(..., min_length=1, max_length=10_000)
     allowed_pii: List[str] = Field(default=[])
@@ -29,6 +30,7 @@ class BlockResponse(BaseModel):
     blocked_types: List[RedactedType] = []
 
 class BatchCheckRequest(BaseModel):
+    user_id: str = Field(default="default_user")
     messages: List[str] = Field(..., max_length=100, description="Up to 100 messages per batch")
     allowed_pii: List[str] = Field(default=[])
 
@@ -66,8 +68,45 @@ class ChatMessageInfo(BaseModel):
     role: str
     content: str
     created_at: datetime
+    redacted_types: Optional[List[Dict[str, Any]]] = None
 
 class SessionDetailResponse(BaseModel):
     id: str
     title: str
     messages: List[ChatMessageInfo]
+
+class TierConfigUpdate(BaseModel):
+    tier_block: List[str] = []
+    tier_redact: List[str] = []
+    tier_audit: List[str] = []
+
+class TierConfigResponse(BaseModel):
+    user_id: str
+    tier_block: List[str]
+    tier_redact: List[str]
+    tier_audit: List[str]
+
+class StatCount(BaseModel):
+    name: str
+    count: int
+
+class StatsResponse(BaseModel):
+    total_requests: int
+    actions: List[StatCount]
+    detected_types: List[StatCount]
+    top_sequences: List[StatCount] = Field(default_factory=list)
+
+class CustomLabelBase(BaseModel):
+    name: str
+    description: str
+    tier: str
+    regex_pattern: Union[str, None] = None
+    dictionary_words: List[str] = Field(default_factory=list)
+
+class CustomLabelCreate(CustomLabelBase):
+    pass
+
+class CustomLabelResponse(CustomLabelBase):
+    id: int
+    created_at: datetime
+
