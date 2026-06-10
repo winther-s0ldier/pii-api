@@ -106,6 +106,9 @@ export default function ChatPage() {
 
   useEffect(() => {
     setCurrentSessionId(crypto.randomUUID());
+    if (window.innerWidth < 768) {
+      setIsSidebarOpen(false);
+    }
     const savedAuth = localStorage.getItem('basic_auth');
     const authExpiry = localStorage.getItem('basic_auth_expiry');
     
@@ -127,14 +130,20 @@ export default function ChatPage() {
     const hasSeenTour = localStorage.getItem('hasSeenTour');
     if (!hasSeenTour) {
       setTimeout(() => {
+        const isMobile = window.innerWidth < 768;
+        const steps = isMobile ? [
+          { element: '#tour-chat-input', popover: { title: 'Secure Chat', description: 'Paste your message or text here. PII is redacted in real-time before reaching the LLM.' } },
+          { element: '#tour-mobile-menu', popover: { title: 'Menu', description: 'Open the sidebar to track PII redactions, configure what to block, and see history.' } }
+        ] : [
+          { element: '#tour-chat-input', popover: { title: 'Secure Chat', description: 'Paste your message or text here. PII is redacted in real-time before reaching the LLM.' } },
+          { element: '#tour-pii-settings', popover: { title: 'PII Settings', description: 'Toggle exactly which types of sensitive data you want to allow or block.' } },
+          { element: '#tour-session-stats', popover: { title: 'Session Stats', description: 'Track how many entities were safely passed, redacted, or blocked.' } },
+          { element: '#tour-new-chat', popover: { title: 'New Chat', description: 'Click here to wipe context and securely start a fresh session.' } }
+        ];
+
         const driverObj = driver({
           showProgress: true,
-          steps: [
-            { element: '#tour-chat-input', popover: { title: 'Secure Chat', description: 'Paste your message or text here. PII is redacted in real-time before reaching the LLM.' } },
-            { element: '#tour-pii-settings', popover: { title: 'PII Settings', description: 'Toggle exactly which types of sensitive data you want to allow or block.' } },
-            { element: '#tour-session-stats', popover: { title: 'Session Stats', description: 'Track how many entities were safely passed, redacted, or blocked.' } },
-            { element: '#tour-new-chat', popover: { title: 'New Chat', description: 'Click here to wipe context and securely start a fresh session.' } }
-          ],
+          steps: steps,
           onDestroyed: () => {
             localStorage.setItem('hasSeenTour', 'true');
           }
@@ -632,6 +641,7 @@ export default function ChatPage() {
           <div className="flex items-center gap-3">
             {!isSidebarOpen && (
               <button 
+                id="tour-mobile-menu"
                 onClick={() => setIsSidebarOpen(true)}
                 className="p-2 hover:bg-black/5 rounded-lg text-muted-foreground hover:text-foreground transition-colors md:hidden"
                 title="Open sidebar"
