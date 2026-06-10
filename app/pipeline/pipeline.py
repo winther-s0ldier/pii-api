@@ -217,31 +217,10 @@ def run(text: str, allowed_pii: List[str] = None, ignored_values: List[str] = No
                 continue
                 
         if d.type in ["location", "date_time", "date", "time", "GPE", "LOC", "DATE", "TIME"]:
-            if nlp:
-                doc = nlp(text)
-                weather_terms = {"weather", "forecast", "temperature", "raining", "sunny"}
-                is_weather_context = False
-                
-                # Find tokens that overlap with the detection
-                for token in doc:
-                    # token.idx is the start char offset
-                    if token.idx >= d.start and token.idx < d.end:
-                        # Check if any ancestor (e.g. parent verb/noun) is a weather term
-                        # Or if the head of this token has a weather term as a child (siblings in dependency tree)
-                        if any(anc.text.lower() in weather_terms for anc in token.ancestors) or \
-                           any(child.text.lower() in weather_terms for child in token.head.children) or \
-                           token.head.text.lower() in weather_terms:
-                            is_weather_context = True
-                            break
-                            
-                if is_weather_context:
-                    continue
-            else:
-                # Fallback to simple keyword check if spaCy model isn't downloaded yet
-                context_window = text[max(0, d.start - 40):d.end + 40].lower()
-                weather_terms = ["weather", "forecast", "temperature", "raining", "sunny", "time is"]
-                if any(w in context_window for w in weather_terms):
-                    continue
+            context_window = text[max(0, d.start - 40):d.end + 40].lower()
+            weather_terms = ["weather", "forecast", "temperature", "raining", "sunny", "time is"]
+            if any(w in context_window for w in weather_terms):
+                continue
                 
         filtered.append(d)
     
