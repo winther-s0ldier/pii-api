@@ -153,7 +153,7 @@ export default function DictionaryManager() {
     }
   };
 
-  const handleDeleteLabelById = async (id: string, name: string) => {
+  const handleDeleteLabelById = async (id: number, name: string) => {
     if (!window.confirm(`Are you sure you want to delete the entire label "${name}"? This action cannot be undone.`)) return;
     
     try {
