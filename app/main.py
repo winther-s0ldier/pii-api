@@ -498,7 +498,7 @@ def get_user_logs(user_id: str, limit: int = 50, db: Session = Depends(get_db), 
         "detected_types": json.loads(log.detected_types),
         "flagged_sequences": json.loads(log.flagged_sequences) if log.flagged_sequences else [],
         "original_message": log.original_message,
-        "created_at": log.created_at.isoformat()
+        "created_at": log.created_at.isoformat() + "Z"
     } for log in logs]
 
 
