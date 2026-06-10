@@ -17,6 +17,21 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from fastapi import Request
 import asyncio
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+import secrets
+
+security = HTTPBasic()
+
+def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
+    correct_username = secrets.compare_digest(credentials.username, "admin")
+    correct_password = secrets.compare_digest(credentials.password, "password")
+    if not (correct_username and correct_password):
+        raise HTTPException(
+            status_code=401,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return credentials
 
 limiter = Limiter(key_func=get_remote_address)
 pipeline_semaphore = None
@@ -53,7 +68,7 @@ def read_root():
 
 @app.post("/api/v1/check")
 @limiter.limit("20/minute")
-async def check_message(request: Request, body: CheckRequest, db: Session = Depends(get_db)):
+async def check_message(request: Request, body: CheckRequest, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
     import asyncio
     import json
     from fastapi.responses import StreamingResponse
@@ -164,7 +179,7 @@ from app.models import BatchCheckRequest, BatchCheckResponse, CheckResult, Block
 
 @app.post("/api/v1/preview", response_model=Union[CheckResult, BlockResult])
 @limiter.limit("30/minute")
-async def preview_message(request: Request, body: CheckRequest):
+async def preview_message(request: Request, body: CheckRequest, credentials: HTTPBasicCredentials = Depends(verify_credentials)):
     async with pipeline_semaphore:
         processed_text, detections, action = await asyncio.to_thread(pipeline.run, body.message, body.allowed_pii, body.ignored_values)
         
@@ -191,14 +206,14 @@ async def preview_message(request: Request, body: CheckRequest):
         redacted_types=redacted_types
     )
 @app.get("/api/v1/sessions", response_model=SessionListResponse)
-def get_sessions(db: Session = Depends(get_db)):
+def get_sessions(db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
     sessions = db.query(ChatSession).order_by(ChatSession.created_at.desc()).all()
     return SessionListResponse(
         sessions=[ChatSessionInfo(id=s.id, title=s.title, created_at=s.created_at) for s in sessions]
     )
 
 @app.get("/api/v1/sessions/{session_id}", response_model=SessionDetailResponse)
-def get_session(session_id: str, db: Session = Depends(get_db)):
+def get_session(session_id: str, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
     session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -210,7 +225,7 @@ def get_session(session_id: str, db: Session = Depends(get_db)):
     )
 
 @app.delete("/api/v1/sessions/{session_id}")
-def delete_session(session_id: str, db: Session = Depends(get_db)):
+def delete_session(session_id: str, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
     session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -223,7 +238,7 @@ from app.models import BatchCheckRequest, BatchCheckResponse, CheckResult, Block
 
 @app.post("/api/v1/check_batch", response_model=BatchCheckResponse)
 @limiter.limit("10/minute")
-def check_message_batch(request: Request, body: BatchCheckRequest):
+def check_message_batch(request: Request, body: BatchCheckRequest, credentials: HTTPBasicCredentials = Depends(verify_credentials)):
     from app.config import TIER_BLOCK
     results = []
     for msg in body.messages:

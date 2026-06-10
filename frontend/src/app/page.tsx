@@ -44,6 +44,12 @@ export default function ChatPage() {
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [allowedPII, setAllowedPII] = useState<string[]>([]);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authHeader, setAuthHeader] = useState('');
+  const [loginUser, setLoginUser] = useState('');
+  const [loginPass, setLoginPass] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [keepLoggedIn, setKeepLoggedIn] = useState(false);
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const [loadingIndex, setLoadingIndex] = useState(0);
 
@@ -100,17 +106,31 @@ export default function ChatPage() {
 
   useEffect(() => {
     setCurrentSessionId(crypto.randomUUID());
-    loadSessions();
+    const savedAuth = localStorage.getItem('basic_auth');
+    const authExpiry = localStorage.getItem('basic_auth_expiry');
+    
+    if (savedAuth && authExpiry) {
+      if (Date.now() < parseInt(authExpiry, 10)) {
+        setAuthHeader(savedAuth);
+        setIsAuthenticated(true);
+        loadSessions(savedAuth);
+      } else {
+        localStorage.removeItem('basic_auth');
+        localStorage.removeItem('basic_auth_expiry');
+      }
+    }
   }, []);
 
   useEffect(() => {
+    if (!isAuthenticated) return;
+    
     const hasSeenTour = localStorage.getItem('hasSeenTour');
     if (!hasSeenTour) {
       setTimeout(() => {
         const driverObj = driver({
           showProgress: true,
           steps: [
-            { element: '#tour-chat-input', popover: { title: 'Secure Chat', description: 'Paste your documents here. PII is redacted in real-time before reaching the LLM.' } },
+            { element: '#tour-chat-input', popover: { title: 'Secure Chat', description: 'Paste your message or text here. PII is redacted in real-time before reaching the LLM.' } },
             { element: '#tour-pii-settings', popover: { title: 'PII Settings', description: 'Toggle exactly which types of sensitive data you want to allow or block.' } },
             { element: '#tour-session-stats', popover: { title: 'Session Stats', description: 'Track how many entities were safely passed, redacted, or blocked.' } },
             { element: '#tour-new-chat', popover: { title: 'New Chat', description: 'Click here to wipe context and securely start a fresh session.' } }
@@ -122,7 +142,7 @@ export default function ChatPage() {
         driverObj.drive();
       }, 500);
     }
-  }, []);
+  }, [isAuthenticated]);
 
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
@@ -132,9 +152,13 @@ export default function ChatPage() {
     }
   };
 
-  const loadSessions = async () => {
+  const loadSessions = async (overrideAuth?: string) => {
+    const auth = overrideAuth || authHeader;
+    if (!auth) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/sessions`);
+      const res = await fetch(`${API_BASE_URL}/api/v1/sessions`, {
+        headers: { 'Authorization': `Basic ${auth}` }
+      });
       if (res.ok) {
         const data = await res.json();
         setSessions(data.sessions || []);
@@ -146,7 +170,9 @@ export default function ChatPage() {
 
   const loadSession = async (id: string) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/sessions/${id}`);
+      const res = await fetch(`${API_BASE_URL}/api/v1/sessions/${id}`, {
+        headers: { 'Authorization': `Basic ${authHeader}` }
+      });
       if (res.ok) {
         const data = await res.json();
         setCurrentSessionId(data.id);
@@ -165,7 +191,10 @@ export default function ChatPage() {
   const deleteSession = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     try {
-      await fetch(`${API_BASE_URL}/api/v1/sessions/${id}`, { method: 'DELETE' });
+      await fetch(`${API_BASE_URL}/api/v1/sessions/${id}`, { 
+        method: 'DELETE',
+        headers: { 'Authorization': `Basic ${authHeader}` }
+      });
       setSessions(prev => prev.filter(s => s.id !== id));
       if (currentSessionId === id) {
         startNewChat();
@@ -216,7 +245,10 @@ export default function ChatPage() {
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/preview`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Basic ${authHeader}`
+        },
         body: JSON.stringify({ message: originalText, session_id: currentSessionId, allowed_pii: allowedPII, ignored_values: [] })
       });
       
@@ -266,7 +298,10 @@ export default function ChatPage() {
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/check`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Basic ${authHeader}`
+        },
         body: JSON.stringify({ message: text, session_id: currentSessionId, allowed_pii: allowedPII, ignored_values: ignoredValues })
       });
 
@@ -396,6 +431,70 @@ export default function ChatPage() {
       return m;
     }));
   };
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError('');
+    if (loginUser === 'admin' && loginPass === 'password') {
+      const token = btoa(`${loginUser}:${loginPass}`);
+      if (keepLoggedIn) {
+        localStorage.setItem('basic_auth', token);
+        localStorage.setItem('basic_auth_expiry', (Date.now() + 2 * 60 * 60 * 1000).toString());
+      }
+      setAuthHeader(token);
+      setIsAuthenticated(true);
+      loadSessions(token);
+    } else {
+      setLoginError('Invalid username or password');
+    }
+  };
+
+  if (!isAuthenticated) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-[#FAF9F5] font-sans text-[#2A1F1A]">
+        <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-sm border border-[#E0D9C8]">
+          <div className="flex justify-center mb-6 text-primary">
+            <Shield size={48} strokeWidth={1.5} />
+          </div>
+          <h2 className="text-2xl font-bold text-center mb-6">Secure Login</h2>
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Username</label>
+              <input 
+                type="text" 
+                value={loginUser}
+                onChange={e => setLoginUser(e.target.value)}
+                className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-primary outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Password</label>
+              <input 
+                type="password" 
+                value={loginPass}
+                onChange={e => setLoginPass(e.target.value)}
+                className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-primary outline-none"
+              />
+            </div>
+            <div className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                id="keepLoggedIn"
+                checked={keepLoggedIn}
+                onChange={e => setKeepLoggedIn(e.target.checked)}
+                className="w-4 h-4 text-primary rounded border-gray-300 focus:ring-primary"
+              />
+              <label htmlFor="keepLoggedIn" className="text-sm font-medium">Keep me logged in</label>
+            </div>
+            {loginError && <p className="text-red-500 text-sm text-center">{loginError}</p>}
+            <button type="submit" className="w-full py-2 bg-primary text-white font-medium rounded hover:bg-primary/90 transition-colors">
+              Sign In
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-[#FAF9F5] overflow-hidden font-sans text-[#2A1F1A]">
@@ -543,15 +642,15 @@ export default function ChatPage() {
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto px-4 py-6">
-          <div className="max-w-3xl mx-auto flex flex-col gap-6 pb-20">
+        <div className="flex-1 overflow-y-auto px-4 py-6 flex flex-col">
+          <div className={cn("max-w-3xl w-full mx-auto flex flex-col gap-6 pb-20", messages.length === 0 && "flex-1 justify-center")}>
             <AnimatePresence mode="wait">
               {messages.length === 0 ? (
                 <motion.div 
                   key="empty-state"
                   exit={{ opacity: 0, scale: 0.95 }}
                   transition={{ duration: 0.2 }}
-                  className="h-full flex flex-col items-center justify-center mt-[15vh]"
+                  className="w-full flex flex-col items-center justify-center"
                 >
                   <h1 className="text-4xl font-serif text-[#2A1F1A] mb-8 flex items-center gap-3">
                   <motion.span 
