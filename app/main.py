@@ -61,7 +61,7 @@ async def check_message(request: Request, body: CheckRequest, db: Session = Depe
 
     # 1. Async Pipeline Check
     async with pipeline_semaphore:
-        processed_text, detections, action = await asyncio.to_thread(pipeline.run, body.message, body.allowed_pii)
+        processed_text, detections, action = await asyncio.to_thread(pipeline.run, body.message, body.allowed_pii, body.ignored_values)
     
     redacted_types_dicts = [
         {
@@ -166,7 +166,7 @@ from app.models import BatchCheckRequest, BatchCheckResponse, CheckResult, Block
 @limiter.limit("30/minute")
 async def preview_message(request: Request, body: CheckRequest):
     async with pipeline_semaphore:
-        processed_text, detections, action = await asyncio.to_thread(pipeline.run, body.message, body.allowed_pii)
+        processed_text, detections, action = await asyncio.to_thread(pipeline.run, body.message, body.allowed_pii, body.ignored_values)
         
     redacted_types = [
         RedactedType(type=d.type, subtype=d.subtype, confidence=d.confidence, value=body.message[d.start:d.end])
@@ -227,7 +227,7 @@ def check_message_batch(request: Request, body: BatchCheckRequest):
     from app.config import TIER_BLOCK
     results = []
     for msg in body.messages:
-        processed_text, detections, action = pipeline.run(msg, body.allowed_pii)
+        processed_text, detections, action = pipeline.run(msg, body.allowed_pii, body.ignored_values)
         
         redacted_types = [
             RedactedType(type=d.type, subtype=d.subtype, confidence=d.confidence)

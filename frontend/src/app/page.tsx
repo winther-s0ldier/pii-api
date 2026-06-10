@@ -5,6 +5,8 @@ import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Shield, Plus, PanelLeft, Send, CheckCircle2, ShieldAlert, X, ShieldBan, MessageSquare, Trash2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import { driver } from "driver.js";
+import "driver.js/dist/driver.css";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -22,6 +24,7 @@ type Message = {
   originalContent?: string;
   status?: 'sending' | 'clear' | 'redacted' | 'blocked' | 'error';
   redactedTypes?: RedactedType[];
+  ignoredValues?: string[];
 };
 
 type SessionInfo = {
@@ -54,8 +57,8 @@ export default function ChatPage() {
 
   const loadingStates = [
     "Analyzing text...",
-    "Detecting PII with GLiNER...",
-    "Running regex checks...",
+    "Running our models...",
+    "Proxying our servers...",
     "Validating context...",
     "Sanitizing output..."
   ];
@@ -98,6 +101,27 @@ export default function ChatPage() {
   useEffect(() => {
     setCurrentSessionId(crypto.randomUUID());
     loadSessions();
+  }, []);
+
+  useEffect(() => {
+    const hasSeenTour = localStorage.getItem('hasSeenTour');
+    if (!hasSeenTour) {
+      setTimeout(() => {
+        const driverObj = driver({
+          showProgress: true,
+          steps: [
+            { element: '#tour-chat-input', popover: { title: 'Secure Chat', description: 'Paste your documents here. PII is redacted in real-time before reaching the LLM.' } },
+            { element: '#tour-pii-settings', popover: { title: 'PII Settings', description: 'Toggle exactly which types of sensitive data you want to allow or block.' } },
+            { element: '#tour-session-stats', popover: { title: 'Session Stats', description: 'Track how many entities were safely passed, redacted, or blocked.' } },
+            { element: '#tour-new-chat', popover: { title: 'New Chat', description: 'Click here to wipe context and securely start a fresh session.' } }
+          ],
+          onDestroyed: () => {
+            localStorage.setItem('hasSeenTour', 'true');
+          }
+        });
+        driverObj.drive();
+      }, 500);
+    }
   }, []);
 
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -193,7 +217,7 @@ export default function ChatPage() {
       const res = await fetch(`${API_BASE_URL}/api/v1/preview`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: originalText, session_id: currentSessionId, allowed_pii: allowedPII })
+        body: JSON.stringify({ message: originalText, session_id: currentSessionId, allowed_pii: allowedPII, ignored_values: [] })
       });
       
       const data = await res.json();
@@ -222,7 +246,8 @@ export default function ChatPage() {
         role: 'preview',
         content: data.message,
         originalContent: originalText,
-        redactedTypes: data.redacted_types
+        redactedTypes: data.redacted_types,
+        ignoredValues: []
       }]);
       setIsLoading(false);
 
@@ -233,7 +258,7 @@ export default function ChatPage() {
     }
   };
 
-  const executeLLM = async (text: string) => {
+  const executeLLM = async (text: string, ignoredValues: string[] = []) => {
     setIsLoading(true);
     const tempId = crypto.randomUUID();
     setMessages(prev => [...prev.filter(m => m.role !== 'preview'), { id: tempId, role: 'user', content: text, status: 'sending' }]);
@@ -242,7 +267,7 @@ export default function ChatPage() {
       const res = await fetch(`${API_BASE_URL}/api/v1/check`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, session_id: currentSessionId, allowed_pii: allowedPII })
+        body: JSON.stringify({ message: text, session_id: currentSessionId, allowed_pii: allowedPII, ignored_values: ignoredValues })
       });
 
       if (!res.ok && res.status === 400) {
@@ -310,7 +335,7 @@ export default function ChatPage() {
     }
   };
 
-  const renderMessageContent = (content: string, redactedTypes?: RedactedType[], role?: string) => {
+  const renderMessageContent = (msgId: string, content: string, redactedTypes?: RedactedType[], role?: string) => {
     if (!redactedTypes || redactedTypes.length === 0) {
       return content;
     }
@@ -318,8 +343,9 @@ export default function ChatPage() {
     let parts: (string | React.ReactNode)[] = [content];
     
     redactedTypes.forEach(rt => {
-      const cleanLabel = rt.type.toUpperCase().replace(/ /g, '_');
-      const searchStr = `[${cleanLabel}]`;
+      const originalLabel = rt.type.toUpperCase().replace(/ /g, '_');
+      const displayLabel = originalLabel.endsWith('_ID') ? 'ID' : originalLabel;
+      const searchStr = `[${originalLabel}]`;
       
       parts = parts.flatMap(part => {
         if (typeof part !== 'string') return [part];
@@ -330,10 +356,19 @@ export default function ChatPage() {
           if (i < segments.length - 1) {
             newParts.push(
               <span key={`${rt.type}-${i}`} className={cn(
-                "inline-flex items-center px-1.5 py-0.5 rounded text-[13px] align-baseline cursor-help font-mono tracking-tight mx-1",
+                "inline-flex items-center pl-1.5 pr-1 py-0.5 rounded text-[13px] align-baseline font-mono tracking-tight mx-1",
                 role === 'user' ? "bg-white/20 text-white border border-white/30" : "text-primary bg-primary/10 border border-primary/20"
               )} title={`Original: ${rt.value}`}>
-                [{cleanLabel}]
+                <span className="cursor-help">[{displayLabel}]</span>
+                {role === 'preview' && (
+                  <button 
+                    onClick={() => handleUnredact(msgId, rt, searchStr)}
+                    className="hover:text-red-500 hover:bg-black/5 rounded-sm transition-colors flex items-center justify-center ml-1 p-0.5"
+                    title="Remove redaction"
+                  >
+                    <X size={10} strokeWidth={4} />
+                  </button>
+                )}
               </span>
             );
           }
@@ -343,6 +378,23 @@ export default function ChatPage() {
     });
     
     return parts;
+  };
+
+  const handleUnredact = (msgId: string, rt: RedactedType, searchStr: string) => {
+    setMessages(prev => prev.map(m => {
+      if (m.id === msgId) {
+        const newContent = m.content.replace(searchStr, rt.value);
+        const newRedactedTypes = m.redactedTypes?.filter(r => r !== rt) || [];
+        const newIgnoredValues = [...(m.ignoredValues || []), rt.value];
+        return {
+          ...m,
+          content: newContent,
+          redactedTypes: newRedactedTypes,
+          ignoredValues: newIgnoredValues
+        };
+      }
+      return m;
+    }));
   };
 
   return (
@@ -361,103 +413,119 @@ export default function ChatPage() {
         )}
       </AnimatePresence>
 
-      {/* Sidebar */}
-      <AnimatePresence>
-        {(isSidebarOpen || (typeof window !== 'undefined' && window.innerWidth >= 768)) && (
-          <motion.aside
-            initial={{ x: -280 }}
-            animate={{ x: 0 }}
-            exit={{ x: -280 }}
-            transition={{ type: "spring", bounce: 0, duration: 0.3 }}
-            className={cn(
-              "fixed md:relative w-[260px] h-full bg-[#F3EFE7] flex flex-col border-r border-[#E0D9C8] z-50 shrink-0",
-              !isSidebarOpen && "md:flex hidden"
-            )}
-          >
-            <div className="p-3 flex items-center justify-between">
-              <div className="font-semibold text-foreground px-2">PII Chat</div>
-              <button 
-                onClick={() => setIsSidebarOpen(false)}
-                className="p-2 hover:bg-black/5 rounded-lg text-muted-foreground hover:text-foreground transition-all shrink-0"
-                title="Close sidebar"
-              >
-                <PanelLeft size={20} />
-              </button>
-            </div>
+      {/* Sidebar Container */}
+      <aside 
+        className={cn(
+          "fixed md:relative top-0 left-0 h-full bg-[#F3EFE7] border-r border-[#E0D9C8] z-50 shrink-0 transition-all duration-300 ease-in-out overflow-hidden flex",
+          isSidebarOpen ? "w-[260px] translate-x-0" : "w-[60px] -translate-x-full md:translate-x-0"
+        )}
+      >
+        {/* Full Sidebar Content */}
+        <div className={cn(
+          "w-[260px] shrink-0 flex flex-col h-full transition-opacity duration-200",
+          isSidebarOpen ? "opacity-100" : "opacity-0 pointer-events-none"
+        )}>
+          <div className="p-3 flex items-center justify-between">
+            <div className="font-semibold text-foreground px-2">PII Chat</div>
+            <button 
+              onClick={() => setIsSidebarOpen(false)}
+              className="p-2 hover:bg-black/5 rounded-lg text-muted-foreground hover:text-foreground transition-all shrink-0"
+              title="Close sidebar"
+            >
+              <PanelLeft size={20} />
+            </button>
+          </div>
 
-            <div className="px-3 pb-3">
-              <button 
-                onClick={startNewChat}
-                className="w-full flex items-center gap-2 bg-[#F3EFE7] hover:bg-black/5 p-2 rounded-lg transition-colors text-sm font-medium border border-transparent text-foreground"
-              >
-                <Plus size={16} /> New chat
-              </button>
-            </div>
+          <div className="px-3 pb-3">
+            <button 
+              id="tour-new-chat"
+              onClick={startNewChat}
+              className="w-full flex items-center gap-2 bg-[#F3EFE7] hover:bg-black/5 p-2 rounded-lg transition-colors text-sm font-medium border border-transparent text-foreground"
+            >
+              <Plus size={16} /> New chat
+            </button>
+          </div>
 
-            <div className="flex-1 overflow-y-auto p-3 space-y-1">
-              <div className="text-xs font-bold text-muted-foreground mb-3 uppercase tracking-wider px-2 pt-2">Recent Chats</div>
-              {sessions.map(s => (
-                <div key={s.id} className="relative group">
-                  <button
-                    onClick={() => { loadSession(s.id); setIsSidebarOpen(false); }}
-                    className={cn(
-                      "w-full text-left p-2 pr-8 rounded-lg text-sm truncate flex items-center gap-2 transition-colors",
-                      currentSessionId === s.id ? "bg-black/5 text-primary font-medium shadow-sm" : "text-foreground hover:bg-black/5"
-                    )}
-                  >
-                    <MessageSquare size={14} className="opacity-50 shrink-0" />
-                    <span className="truncate">{s.title}</span>
-                  </button>
-                  <button 
-                    onClick={(e) => deleteSession(e, s.id)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 opacity-0 group-hover:opacity-100 hover:bg-black/10 hover:text-red-600 rounded text-muted-foreground transition-all"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-1">
+            <div className="text-xs font-bold text-muted-foreground mb-3 uppercase tracking-wider px-2 pt-2">Recent Chats</div>
+            {sessions.map(s => (
+              <div key={s.id} className="relative group">
+                <button
+                  onClick={() => { loadSession(s.id); setIsSidebarOpen(false); }}
+                  className={cn(
+                    "w-full text-left p-2 pr-8 rounded-lg text-sm truncate flex items-center gap-2 transition-colors",
+                    currentSessionId === s.id ? "bg-black/5 text-primary font-medium shadow-sm" : "text-foreground hover:bg-black/5"
+                  )}
+                >
+                  <MessageSquare size={14} className="opacity-50 shrink-0" />
+                  <span className="truncate">{s.title}</span>
+                </button>
+                <button 
+                  onClick={(e) => deleteSession(e, s.id)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 opacity-0 group-hover:opacity-100 hover:bg-black/10 hover:text-red-600 rounded text-muted-foreground transition-all"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <div id="tour-session-stats" className="p-4 border-t border-border bg-secondary/30">
+            <div className="text-xs font-bold text-muted-foreground mb-3 uppercase tracking-wider flex items-center gap-2">
+              <Shield size={14} className="text-primary/70" /> Session Stats
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-center text-[10px]">
+              <div className="bg-white/50 border border-[#E0D9C8] rounded-md py-2 flex flex-col items-center justify-center">
+                <span className="font-bold text-green-600/80 text-base">{totalPassed}</span>
+                <span className="text-muted-foreground font-medium">Passed</span>
+              </div>
+              <div className="bg-white/50 border border-[#E0D9C8] rounded-md py-2 flex flex-col items-center justify-center">
+                <span className="font-bold text-amber-600/80 text-base">{totalRedacted}</span>
+                <span className="text-muted-foreground font-medium">Redacted</span>
+              </div>
+              <div className="bg-white/50 border border-[#E0D9C8] rounded-md py-2 flex flex-col items-center justify-center">
+                <span className="font-bold text-destructive/80 text-base">{totalBlocked}</span>
+                <span className="text-muted-foreground font-medium">Blocked</span>
+              </div>
+            </div>
+          </div>
+
+          <div id="tour-pii-settings" className="p-4 border-t border-border bg-secondary/50">
+            <div className="text-xs font-bold text-muted-foreground mb-3 uppercase tracking-wider">PII Settings</div>
+            <div className="flex flex-col gap-2">
+              {piiTypes.map(pt => (
+                <label key={pt.value} className="flex items-center gap-2 text-sm text-foreground cursor-pointer group">
+                  <input 
+                    type="checkbox" 
+                    value={pt.value}
+                    checked={allowedPII.includes(pt.value)}
+                    onChange={() => togglePII(pt.value)}
+                    className="rounded border-border text-primary focus:ring-primary/50 w-4 h-4 accent-primary transition-all"
+                  />
+                  <span className="group-hover:text-primary transition-colors">{pt.label}</span>
+                </label>
               ))}
             </div>
+          </div>
+        </div>
 
-            <div className="p-4 border-t border-border bg-secondary/30">
-              <div className="text-xs font-bold text-muted-foreground mb-3 uppercase tracking-wider flex items-center gap-2">
-                <Shield size={14} className="text-primary/70" /> Session Stats
-              </div>
-              <div className="grid grid-cols-3 gap-2 text-center text-[10px]">
-                <div className="bg-white/50 border border-[#E0D9C8] rounded-md py-2 flex flex-col items-center justify-center">
-                  <span className="font-bold text-green-600/80 text-base">{totalPassed}</span>
-                  <span className="text-muted-foreground font-medium">Passed</span>
-                </div>
-                <div className="bg-white/50 border border-[#E0D9C8] rounded-md py-2 flex flex-col items-center justify-center">
-                  <span className="font-bold text-amber-600/80 text-base">{totalRedacted}</span>
-                  <span className="text-muted-foreground font-medium">Redacted</span>
-                </div>
-                <div className="bg-white/50 border border-[#E0D9C8] rounded-md py-2 flex flex-col items-center justify-center">
-                  <span className="font-bold text-destructive/80 text-base">{totalBlocked}</span>
-                  <span className="text-muted-foreground font-medium">Blocked</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-4 border-t border-border bg-secondary/50">
-              <div className="text-xs font-bold text-muted-foreground mb-3 uppercase tracking-wider">PII Settings</div>
-              <div className="flex flex-col gap-2">
-                {piiTypes.map(pt => (
-                  <label key={pt.value} className="flex items-center gap-2 text-sm text-foreground cursor-pointer group">
-                    <input 
-                      type="checkbox" 
-                      value={pt.value}
-                      checked={allowedPII.includes(pt.value)}
-                      onChange={() => togglePII(pt.value)}
-                      className="rounded border-border text-primary focus:ring-primary/50 w-4 h-4 accent-primary transition-all"
-                    />
-                    <span className="group-hover:text-primary transition-colors">{pt.label}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          </motion.aside>
-        )}
-      </AnimatePresence>
+        {/* Mini Rail Content (Desktop Only) */}
+        <div className={cn(
+          "absolute top-0 left-0 w-[60px] h-full hidden md:flex flex-col items-center py-3 gap-4 transition-opacity duration-200",
+          !isSidebarOpen ? "opacity-100 delay-100" : "opacity-0 pointer-events-none"
+        )}>
+          <button onClick={() => setIsSidebarOpen(true)} className="p-2 hover:bg-black/5 rounded-lg text-muted-foreground hover:text-foreground transition-all" title="Open sidebar">
+            <PanelLeft size={20} />
+          </button>
+          <button onClick={startNewChat} className="p-2 hover:bg-black/5 rounded-lg text-muted-foreground hover:text-foreground transition-all" title="New chat">
+            <Plus size={20} />
+          </button>
+          <div className="flex-1" />
+          <button onClick={() => setIsSidebarOpen(true)} className="p-2 hover:bg-black/5 rounded-lg text-muted-foreground hover:text-foreground transition-all mb-4" title="Stats & Settings">
+            <Shield size={20} />
+          </button>
+        </div>
+      </aside>
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0 relative h-full bg-[#FAF9F5]">
@@ -466,7 +534,7 @@ export default function ChatPage() {
             {!isSidebarOpen && (
               <button 
                 onClick={() => setIsSidebarOpen(true)}
-                className="p-2 hover:bg-black/5 rounded-lg text-muted-foreground hover:text-foreground transition-colors"
+                className="p-2 hover:bg-black/5 rounded-lg text-muted-foreground hover:text-foreground transition-colors md:hidden"
                 title="Open sidebar"
               >
                 <PanelLeft size={20} />
@@ -495,7 +563,7 @@ export default function ChatPage() {
 
                 {/* Centered Input Area */}
                 <div className="w-full max-w-3xl relative">
-                  <div className="relative flex flex-col w-full bg-white border border-[#E0D9C8] rounded-2xl shadow-sm focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/50 transition-all">
+                  <div id="tour-chat-input" className="relative flex flex-col w-full bg-white border border-[#E0D9C8] rounded-2xl shadow-sm focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/50 transition-all">
                     <textarea
                       ref={textareaRef}
                       value={input}
@@ -554,7 +622,7 @@ export default function ChatPage() {
                           <ShieldAlert size={14} /> Preview Before Sending
                         </p>
                         <div className="text-[15px] leading-relaxed mb-4">
-                           {renderMessageContent(msg.content, msg.redactedTypes)}
+                           {renderMessageContent(msg.id, msg.content, msg.redactedTypes, msg.role)}
                         </div>
                         <div className="flex justify-end gap-2">
                           <button 
@@ -569,7 +637,7 @@ export default function ChatPage() {
                           <button 
                             onClick={() => {
                               setMessages(prev => prev.filter(m => m.id !== msg.id));
-                              executeLLM(msg.originalContent || '');
+                              executeLLM(msg.content, msg.ignoredValues || []);
                             }}
                             className="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 rounded-lg flex items-center gap-2 transition-opacity"
                           >
@@ -597,7 +665,7 @@ export default function ChatPage() {
                              </div>
                            )
                         ) : (
-                           <div>{renderMessageContent(msg.content, msg.redactedTypes, msg.role)}</div>
+                           <div>{renderMessageContent(msg.id, msg.content, msg.redactedTypes, msg.role)}</div>
                         )}
                       </div>
                     )}

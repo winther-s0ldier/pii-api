@@ -6,6 +6,7 @@ class CheckRequest(BaseModel):
     session_id: str = Field(default="default_session")
     message: str = Field(..., min_length=1, max_length=10_000)
     allowed_pii: List[str] = Field(default=[])
+    ignored_values: List[str] = Field(default=[])
 
 
 class RedactedType(BaseModel):

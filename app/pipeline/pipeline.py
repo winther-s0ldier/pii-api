@@ -62,23 +62,23 @@ def _classify_tier(detections: List[Detection]) -> str:
         return "AUDIT"
     return "CLEAN"
 
-def run(text: str, allowed_pii: List[str] = None) -> Tuple[str, List[Detection], str]:
+def run(text: str, allowed_pii: List[str] = None, ignored_values: List[str] = None) -> Tuple[str, List[Detection], str]:
     """
     Run all stages in sequence.
     Returns (processed_text, list_of_detections, action_tier).
     """
     if allowed_pii is None:
         allowed_pii = []
+    if ignored_values is None:
+        ignored_values = []
         
     all_detections: List[Detection] = []
     
-    # Run the O(1) rules engines first
     all_detections.extend(regex_stage.detect(text))
     all_detections.extend(code_stage.detect(text))
     all_detections.extend(luhn_stage.detect(text))
     all_detections.extend(entropy_stage.detect(text))
     
-    # Run the deep learning engines via HuggingFace Space API
     hf_space_url = os.getenv("HF_SPACE_URL")
     if hf_space_url:
         try:
@@ -107,8 +107,16 @@ def run(text: str, allowed_pii: List[str] = None) -> Tuple[str, List[Detection],
     # Filter out allowed PII, except for TIER_BLOCK items which are strictly locked
     filtered = []
     for d in merged:
-        if d.type in allowed_pii and d.type not in TIER_BLOCK:
+        if d.type in TIER_BLOCK:
+            filtered.append(d)
             continue
+            
+        if text[d.start:d.end] in ignored_values:
+            continue
+            
+        if d.type in allowed_pii:
+            continue
+            
         filtered.append(d)
     
     action = _classify_tier(filtered)
