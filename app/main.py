@@ -60,11 +60,9 @@ init_db()
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-app.mount("/static", StaticFiles(directory="frontend"), name="static")
-
 @app.get("/")
 def read_root():
-    return FileResponse("frontend/index.html")
+    return {"status": "ok", "message": "PII Detection API is running"}
 
 @app.post("/api/v1/check")
 @limiter.limit("20/minute")

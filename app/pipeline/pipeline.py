@@ -117,7 +117,6 @@ def run(text: str, allowed_pii: List[str] = None, ignored_values: List[str] = No
         if d.type in allowed_pii:
             continue
             
-        # Whitelist heuristic: Ignore 'person' tags if they are part of a casual greeting
         if d.type == "person":
             context_window = text[max(0, d.start - 20):d.end + 20].lower()
             greetings = ["hi ", "hello ", "hey ", "my name is", "i am ", "i'm "]
