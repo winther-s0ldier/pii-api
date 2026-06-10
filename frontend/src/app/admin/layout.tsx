@@ -28,6 +28,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     
     if (isValid) {
       setIsAuth(true);
+      if (pathname === '/admin/login') {
+        router.replace('/admin');
+      }
     } else {
       localStorage.removeItem('basic_auth');
       localStorage.removeItem('basic_auth_expiry');
@@ -40,7 +43,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   if (!mounted) return null;
 
   // Don't show sidebar on login page
-  if (!isAuth && pathname === '/admin/login') {
+  if (pathname === '/admin/login') {
     return <>{children}</>;
   }
 
