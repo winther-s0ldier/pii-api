@@ -230,7 +230,13 @@ export default function ChatPage() {
     { value: 'person', label: 'Names' },
     { value: 'phone number', label: 'Phone' },
     { value: 'physical address', label: 'Address' },
-    { value: 'IP address', label: 'IP Address' }
+    { value: 'IP address', label: 'IP Address' },
+    { value: 'US SSN', label: 'SSN' },
+    { value: 'US ITIN', label: 'Tax ID' },
+    { value: 'US passport', label: 'Passport' },
+    { value: 'US driver license', label: 'Driver License' },
+    { value: 'UK NHS number', label: 'UK NHS' },
+    { value: 'US bank number', label: 'Bank Account' }
   ];
 
   const handleSendMessage = async () => {
@@ -472,6 +478,7 @@ export default function ChatPage() {
               <input 
                 type="text" 
                 value={loginUser}
+                autoComplete="username"
                 onChange={e => setLoginUser(e.target.value)}
                 className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-primary outline-none"
               />
@@ -481,6 +488,7 @@ export default function ChatPage() {
               <input 
                 type="password" 
                 value={loginPass}
+                autoComplete="current-password"
                 onChange={e => setLoginPass(e.target.value)}
                 className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-primary outline-none"
               />

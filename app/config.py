@@ -9,12 +9,14 @@ CODE_DENSITY_THRESHOLD   = int(os.getenv("PI_CODE_DENSITY", "2"))
 
 TIER_BLOCK = {
     "api_key", "credit_card", "code", "private_key",
-    "card number", "CVV", "IBAN", "API keys", "password"
+    "card number", "CVV", "IBAN", "API keys", "password",
+    "credit card", "US bank number", "crypto wallet", "IBAN code"
 }
 
 TIER_REDACT = {
     "ssn",
-    "passport number", "driver's license", "tax ID"
+    "passport number", "driver's license", "tax ID",
+    "US SSN", "US passport", "US driver license", "US ITIN", "UK NHS number"
 }
 
 TIER_AUDIT = {
