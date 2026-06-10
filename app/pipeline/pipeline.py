@@ -6,12 +6,6 @@ from app.config import TIER_BLOCK, TIER_REDACT, TIER_AUDIT, get_block_warning
 import requests
 import os
 import logging
-import spacy
-
-try:
-    nlp = spacy.load("en_core_web_sm")
-except (OSError, ImportError):
-    nlp = None
 
 logger = logging.getLogger(__name__)
 def _get_priority(type_str: str, tier_config: dict = None) -> int:
