@@ -19,11 +19,26 @@ from fastapi import Request
 import asyncio
 
 limiter = Limiter(key_func=get_remote_address)
-pipeline_semaphore = asyncio.Semaphore(1)
+pipeline_semaphore = None
 
 app = FastAPI(
     title="PII Detection API",
     description="API for detecting and anonymizing PII data",
+)
+
+@app.on_event("startup")
+async def startup_event():
+    global pipeline_semaphore
+    pipeline_semaphore = asyncio.Semaphore(1)
+
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows requests from any origin (e.g., Next.js dev server or Vercel)
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 init_db()
@@ -193,6 +208,16 @@ def get_session(session_id: str, db: Session = Depends(get_db)):
         title=session.title,
         messages=[ChatMessageInfo(role=m.role, content=m.content, created_at=m.created_at) for m in messages]
     )
+
+@app.delete("/api/v1/sessions/{session_id}")
+def delete_session(session_id: str, db: Session = Depends(get_db)):
+    session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    db.query(ChatMessage).filter(ChatMessage.session_id == session_id).delete()
+    db.delete(session)
+    db.commit()
+    return {"status": "deleted"}
 
 from app.models import BatchCheckRequest, BatchCheckResponse, CheckResult, BlockResult
 

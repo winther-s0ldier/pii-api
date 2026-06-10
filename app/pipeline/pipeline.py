@@ -1,9 +1,13 @@
 from typing import List, Tuple
 from fastapi import HTTPException
 from app.pipeline.base import Detection
-from app.pipeline import regex_stage, structural_stage, entropy_stage, luhn_stage, code_stage, presidio_stage
+from app.pipeline import regex_stage, entropy_stage, luhn_stage, code_stage
 from app.config import TIER_BLOCK, TIER_REDACT, TIER_AUDIT, get_block_warning
+import requests
+import os
+import logging
 
+logger = logging.getLogger(__name__)
 def _get_priority(type_str: str) -> int:
     if type_str in TIER_BLOCK:
         return 3
@@ -23,9 +27,18 @@ def _merge_spans(detections: List[Detection]) -> List[Detection]:
             # Overlapping — extend the previous span, prioritize the most severe type
             last_prio = _get_priority(last.type)
             curr_prio = _get_priority(current.type)
-            
-            winning_type = last.type if last_prio >= curr_prio else current.type
-            winning_subtype = last.subtype if last_prio >= curr_prio else current.subtype
+            # If priorities are equal, prefer local engines over HF
+            if last_prio == curr_prio:
+                if last.engine != "hf" and current.engine == "hf":
+                    winning_type, winning_subtype = last.type, last.subtype
+                elif current.engine != "hf" and last.engine == "hf":
+                    winning_type, winning_subtype = current.type, current.subtype
+                else:
+                    winning_type = last.type
+                    winning_subtype = last.subtype
+            else:
+                winning_type = last.type if last_prio > curr_prio else current.type
+                winning_subtype = last.subtype if last_prio > curr_prio else current.subtype
 
             merged[-1] = Detection(
                 start=last.start,
@@ -33,6 +46,7 @@ def _merge_spans(detections: List[Detection]) -> List[Detection]:
                 type=winning_type,
                 subtype=winning_subtype,
                 confidence="high" if "high" in (last.confidence, current.confidence) else "medium",
+                engine=last.engine if winning_type == last.type else current.engine
             )
         else:
             merged.append(current)
@@ -64,9 +78,29 @@ def run(text: str, allowed_pii: List[str] = None) -> Tuple[str, List[Detection],
     all_detections.extend(luhn_stage.detect(text))
     all_detections.extend(entropy_stage.detect(text))
     
-    # Run the deep learning engines
-    all_detections.extend(presidio_stage.detect(text))
-    all_detections.extend(structural_stage.detect(text))
+    # Run the deep learning engines via HuggingFace Space API
+    hf_space_url = os.getenv("HF_SPACE_URL")
+    if hf_space_url:
+        try:
+            url = hf_space_url.rstrip("/") + "/detect"
+            res = requests.post(url, json={"text": text}, timeout=15)
+            if res.status_code == 200:
+                data = res.json().get("detections", [])
+                for d in data:
+                    all_detections.append(
+                        Detection(
+                            start=d["start"],
+                            end=d["end"],
+                            type=d["type"],
+                            subtype=d["subtype"],
+                            confidence=d["confidence"],
+                            engine="hf"
+                        )
+                    )
+            else:
+                logger.error(f"HF API returned {res.status_code}: {res.text}")
+        except Exception as e:
+            logger.error(f"Failed to call HF Space: {e}")
 
     merged = _merge_spans(all_detections)
     

@@ -8,3 +8,4 @@ class Detection:
     type: str
     subtype: str
     confidence: str 
+    engine: str = "unknown"

@@ -1,0 +1,28 @@
+name: Sync to Hugging Face Hub
+
+on:
+  push:
+    branches: [main]
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  sync-to-hub:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      
+      - name: Push HF Space folder to Hub
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          # ⚠️ Replace YOUR_SPACE_NAME below if it differs from 'pii-api'
+          HF_USERNAME: "helmutz3m0"
+          HF_SPACE_NAME: "pii-api"
+        run: |
+          git config --global user.email "github-actions@github.com"
+          git config --global user.name "GitHub Actions"
+          
+          # This command extracts ONLY the hf_space/ folder and pushes it to the root of the HuggingFace repo
+          git push --force https://$HF_USERNAME:$HF_TOKEN@huggingface.co/spaces/$HF_USERNAME/$HF_SPACE_NAME `git subtree split --prefix hf_space main`:main

@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+pydantic
+gliner2
+presidio-analyzer
+torch
+spacy
