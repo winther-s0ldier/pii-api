@@ -136,7 +136,6 @@ export default function ChatPage() {
           { element: '#tour-mobile-menu', popover: { title: 'Menu', description: 'Open the sidebar to track PII redactions, configure what to block, and see history.' } }
         ] : [
           { element: '#tour-chat-input', popover: { title: 'Secure Chat', description: 'Paste your message or text here. PII is redacted in real-time before reaching the LLM.' } },
-          { element: '#tour-pii-settings', popover: { title: 'PII Settings', description: 'Toggle exactly which types of sensitive data you want to allow or block.' } },
           { element: '#tour-session-stats', popover: { title: 'Session Stats', description: 'Track how many entities were safely passed, redacted, or blocked.' } },
           { element: '#tour-new-chat', popover: { title: 'New Chat', description: 'Click here to wipe context and securely start a fresh session.' } }
         ];
@@ -628,24 +627,6 @@ export default function ChatPage() {
                 <span className="font-bold text-destructive/80 text-base">{totalBlocked}</span>
                 <span className="text-muted-foreground font-medium">Blocked</span>
               </div>
-            </div>
-          </div>
-
-          <div id="tour-pii-settings" className="p-4 border-t border-border bg-secondary/50">
-            <div className="text-xs font-bold text-muted-foreground mb-3 uppercase tracking-wider">PII Settings</div>
-            <div className="flex flex-col gap-2">
-              {piiTypes.map(pt => (
-                <label key={pt.value} className="flex items-center gap-2 text-sm text-foreground cursor-pointer group">
-                  <input 
-                    type="checkbox" 
-                    value={pt.value}
-                    checked={allowedPII.includes(pt.value)}
-                    onChange={() => togglePII(pt.value)}
-                    className="rounded border-border text-primary focus:ring-primary/50 w-4 h-4 accent-primary transition-all"
-                  />
-                  <span className="group-hover:text-primary transition-colors">{pt.label}</span>
-                </label>
-              ))}
             </div>
           </div>
         </div>
