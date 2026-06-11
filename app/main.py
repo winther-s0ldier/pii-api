@@ -130,6 +130,17 @@ async def check_message(request: Request, body: CheckRequest, db: Session = Depe
         block_set = tier_config["block"] if tier_config else TIER_BLOCK
         blocked_types = [d.type for d in detections if d.type in block_set]
         primary_type = blocked_types[0] if blocked_types else "code"
+
+        # Persist blocked message so it survives session restore
+        _session_id = body.session_id
+        db_sess = db.query(ChatSession).filter(ChatSession.id == _session_id).first()
+        if not db_sess:
+            _title = body.message[:30] + "..." if len(body.message) > 30 else body.message
+            db_sess = ChatSession(id=_session_id, title=_title)
+            db.add(db_sess)
+        blocked_msg = ChatMessage(session_id=_session_id, role="blocked", content=body.message)
+        db.add(blocked_msg)
+        db.commit()
         
         raise HTTPException(
             status_code=400,
@@ -192,7 +203,7 @@ async def check_message(request: Request, body: CheckRequest, db: Session = Depe
                 )
                 
                 chat = client.aio.chats.create(
-                    model="gemini-3.1-pro-preview", 
+                    model="gemini-3.5-flash", 
                     history=gemini_history,
                     config=types.GenerateContentConfig(
                         tools=[{"google_search": {}}],
@@ -324,6 +335,27 @@ def delete_session(session_id: str, db: Session = Depends(get_db), credentials: 
     db.commit()
     return {"status": "deleted"}
 
+from pydantic import BaseModel as _BaseModel
+
+class BlockedMessageSave(_BaseModel):
+    session_id: str
+    message: str
+    user_id: str = "default_user"
+
+@app.post("/api/v1/sessions/save-blocked")
+def save_blocked_message(body: BlockedMessageSave, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
+    """Save a blocked message to the DB so it appears when the session is restored."""
+    db_sess = db.query(ChatSession).filter(ChatSession.id == body.session_id).first()
+    if not db_sess:
+        title = body.message[:30] + "..." if len(body.message) > 30 else body.message
+        db_sess = ChatSession(id=body.session_id, title=title)
+        db.add(db_sess)
+        db.commit()
+    blocked_msg = ChatMessage(session_id=body.session_id, role="blocked", content=body.message)
+    db.add(blocked_msg)
+    db.commit()
+    return {"status": "saved"}
+
 from app.models import BatchCheckRequest, BatchCheckResponse, CheckResult, BlockResult
 
 @app.post("/api/v1/check_batch", response_model=BatchCheckResponse)
@@ -354,7 +386,7 @@ def check_message_batch(request: Request, body: BatchCheckRequest, db: Session =
             action=action,
             detected_types=json.dumps(detected_types_list),
             flagged_sequences=json.dumps(flagged_sequences_list),
-            original_message=body.message if action in ["BLOCK", "REDACT"] else None
+            original_message=msg if action in ["BLOCK", "REDACT"] else None
         )
         db.add(stat_log)
         db.commit()

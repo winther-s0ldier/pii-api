@@ -40,13 +40,14 @@ export default function AdminDashboard() {
   const [unmaskedSequences, setUnmaskedSequences] = useState<Record<string, boolean>>({});
 
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [loginUser, setLoginUser] = useState('');
-  const [loginPass, setLoginPass] = useState('');
-  const [loginError, setLoginError] = useState('');
-  const [keepLoggedIn, setKeepLoggedIn] = useState(false);
   const [selectedLogMessage, setSelectedLogMessage] = useState<string | null>(null);
 
   const backendAuth = typeof window !== 'undefined' ? localStorage.getItem('basic_auth') : null;
+
+  // Auth is handled by the admin layout — mark as authenticated on mount
+  useEffect(() => {
+    setIsAuthenticated(true);
+  }, []);
 
   useEffect(() => {
     fetchGlobalStats();

@@ -40,13 +40,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     }
   }, [pathname, router]);
 
-  if (!mounted) return null;
-
-  // Don't show sidebar on login page
+  // Always render login page bare — no sidebar, no auth gate, no flash
   if (pathname === '/admin/login') {
     return <>{children}</>;
   }
 
+  if (!mounted) return null;
   if (!isAuth) return null;
 
   return (

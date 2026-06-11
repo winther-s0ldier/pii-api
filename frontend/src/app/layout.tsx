@@ -31,7 +31,7 @@ export default function RootLayout({
       lang="en"
       className={`${inter.variable} ${poppins.variable} h-full antialiased font-sans`}
     >
-      <body className="min-h-full flex flex-col font-sans">{children}</body>
+      <body className="min-h-full flex flex-col font-sans" suppressHydrationWarning>{children}</body>
     </html>
   );
 }

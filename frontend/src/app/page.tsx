@@ -187,9 +187,11 @@ export default function ChatPage() {
         setCurrentSessionId(data.id);
         setMessages(data.messages.map((m: any, i: number) => ({
           id: `db-${i}`,
-          role: m.role,
+          role: m.role === 'blocked' ? 'user' : m.role,
           content: m.content,
-          status: 'clear',
+          status: m.role === 'blocked'
+            ? 'blocked'
+            : (m.redacted_types && m.redacted_types.length > 0 ? 'redacted' : 'clear'),
           redactedTypes: m.redacted_types
         })));
       }
@@ -279,6 +281,12 @@ export default function ChatPage() {
           content: originalText,
           status: 'blocked'
         }]);
+        // Persist to DB so blocked messages survive session restore
+        fetch(`${API_BASE_URL}/api/v1/sessions/save-blocked`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Basic ${authHeader}` },
+          body: JSON.stringify({ session_id: currentSessionId, message: originalText })
+        }).then(() => loadSessions()).catch(e => console.error('Failed to save blocked message', e));
         setIsLoading(false);
         return;
       }
@@ -306,7 +314,7 @@ export default function ChatPage() {
     }
   };
 
-  const executeLLM = async (text: string, ignoredValues: string[] = []) => {
+  const executeLLM = async (text: string, ignoredValues: string[] = [], isPreRedacted: boolean = false) => {
     setIsLoading(true);
     const tempId = crypto.randomUUID();
     setMessages(prev => [...prev.filter(m => m.role !== 'preview'), { id: tempId, role: 'user', content: text, status: 'sending' }]);
@@ -322,7 +330,11 @@ export default function ChatPage() {
       });
 
       if (!res.ok && res.status === 400) {
-        setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'user', content: text, status: 'blocked' }]);
+        // Remove the ghost 'sending' bubble, then add the blocked one
+        setMessages(prev => [
+          ...prev.filter(m => m.id !== tempId),
+          { id: crypto.randomUUID(), role: 'user' as const, content: text, status: 'blocked' as const }
+        ]);
         setIsLoading(false);
         return;
       }
@@ -356,7 +368,9 @@ export default function ChatPage() {
                 const mapped = prev.map(m => m.id === tempId ? {
                   ...m,
                   content: data.message,
-                  status: (action === 'CLEAN' || action === 'CLEAR') ? ('clear' as const) : ('redacted' as const),
+                  // If the message was pre-redacted before sending, always show 'redacted'
+                  // (backend sees clean text and returns CLEAN, but the original had PII)
+                  status: (isPreRedacted || action === 'REDACT') ? ('redacted' as const) : ('clear' as const),
                   redactedTypes: data.redacted_types
                 } : m);
                 return [...mapped, { id: modelMsgId, role: 'model', content: '', status: 'sending' as const }];
@@ -774,7 +788,7 @@ export default function ChatPage() {
                           <button 
                             onClick={() => {
                               setMessages(prev => prev.filter(m => m.id !== msg.id));
-                              executeLLM(msg.content, msg.ignoredValues || []);
+                              executeLLM(msg.content, msg.ignoredValues || [], true);
                             }}
                             className="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 rounded-lg flex items-center gap-2 transition-opacity"
                           >
