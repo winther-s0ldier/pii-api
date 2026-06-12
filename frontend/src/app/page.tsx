@@ -524,11 +524,7 @@ export default function ChatPage() {
             </button>
           </form>
 
-          <div className="mt-6 text-center">
-            <a href="/admin/login" className="text-xs text-muted-foreground hover:text-primary transition-colors inline-flex items-center gap-1">
-              <ShieldAlert size={12} /> Admin Login
-            </a>
-          </div>
+
         </div>
       </div>
     );
