@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Shield, Plus, PanelLeft, Send, CheckCircle2, ShieldAlert, X, ShieldBan, MessageSquare, Trash2, HatGlasses } from 'lucide-react';
+import { Shield, Plus, PanelLeft, Send, CheckCircle2, ShieldAlert, X, ShieldBan, MessageSquare, Trash2, HatGlasses, Paperclip } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { driver } from "driver.js";
 import "driver.js/dist/driver.css";
@@ -95,6 +95,8 @@ export default function ChatPage() {
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const emptyFileInputRef = useRef<HTMLInputElement>(null);
+  const bottomFileInputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -274,12 +276,24 @@ export default function ChatPage() {
       setMessages(prev => prev.filter(m => m.id !== previewId));
 
       if (data.action === 'BLOCK') {
-        setMessages(prev => [...prev, {
-          id: crypto.randomUUID(),
-          role: 'user',
-          content: originalText,
-          status: 'blocked'
-        }]);
+        const uniqueTypes = Array.from(new Set((data.blocked_types || []).map((t: any) => t.type)));
+        const typesStr = uniqueTypes.join(', ');
+        
+        setMessages(prev => [
+          ...prev, 
+          {
+            id: crypto.randomUUID(),
+            role: 'user',
+            content: originalText,
+            status: 'blocked'
+          },
+          {
+            id: crypto.randomUUID(),
+            role: 'model',
+            content: `This has been blocked because it contains: ${typesStr}, hence it has been blocked.`,
+            status: 'clear'
+          }
+        ]);
         // Persist to DB so blocked messages survive session restore
         fetch(`${API_BASE_URL}/api/v1/sessions/save-blocked`, {
           method: 'POST',
@@ -313,6 +327,108 @@ export default function ChatPage() {
     }
   };
 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    // Clear the input immediately to allow re-uploading the same file
+    e.target.value = '';
+    
+    setIsLoading(true);
+    const previewId = crypto.randomUUID();
+    
+    setMessages(prev => [...prev, {
+      id: previewId,
+      role: 'user',
+      content: `Extracting ${file.name}...`,
+      status: 'sending'
+    }]);
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('user_id', 'admin');
+    formData.append('session_id', currentSessionId);
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/document/upload`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Basic ${authHeader}`
+        },
+        body: formData
+      });
+      
+      const data = await res.json();
+      setMessages(prev => prev.filter(m => m.id !== previewId));
+
+      if (!res.ok) {
+        setMessages(prev => [...prev, {
+          id: crypto.randomUUID(),
+          role: 'user',
+          content: `Error extracting ${file.name}: ${data.detail || 'Unknown error'}`,
+          status: 'error'
+        }]);
+        setIsLoading(false);
+        return;
+      }
+
+      if (data.action === 'BLOCK') {
+        const uniqueTypes = Array.from(new Set((data.blocked_types || []).map((t: any) => t.type)));
+        const typesStr = uniqueTypes.join(', ');
+        const explanation = `I couldn't process this because it contains sensitive information (${typesStr}). For your security, the transmission was blocked.`;
+        
+        setMessages(prev => [
+          ...prev, 
+          {
+            id: crypto.randomUUID(),
+            role: 'user',
+            content: `[Document: ${file.name}]`,
+            status: 'blocked'
+          },
+          {
+            id: crypto.randomUUID(),
+            role: 'model',
+            content: explanation,
+            status: 'clear'
+          }
+        ]);
+        
+        fetch(`${API_BASE_URL}/api/v1/sessions/save-blocked`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Basic ${authHeader}` },
+          body: JSON.stringify({ session_id: currentSessionId, message: `[Document: ${file.name}]`, model_explanation: explanation })
+        }).then(() => loadSessions()).catch(e => console.error('Failed to save blocked document', e));
+        
+        setIsLoading(false);
+        return;
+      }
+
+      const CHUNK_LIMIT = 100000;
+      const MAX_CHUNKS = 5;
+      
+      setIsLoading(false);
+      
+      if (data.message.length > CHUNK_LIMIT) {
+        const chunks = [];
+        for (let i = 0; i < data.message.length; i += CHUNK_LIMIT) {
+          chunks.push(data.message.substring(i, i + CHUNK_LIMIT));
+          if (chunks.length === MAX_CHUNKS) break;
+        }
+        for (let i = 0; i < chunks.length; i++) {
+          const docText = `[Document: ${file.name} (Part ${i + 1}/${chunks.length})]\n${chunks[i]}`;
+          await executeLLM(docText, allowedPII);
+        }
+      } else {
+        const docText = `[Document: ${file.name}]\n${data.message}`;
+        await executeLLM(docText, allowedPII);
+      }
+    } catch (err) {
+      console.error(err);
+      setIsLoading(false);
+      setMessages(prev => prev.filter(m => m.id !== previewId));
+    }
+  };
+
   const executeLLM = async (text: string, ignoredValues: string[] = [], isPreRedacted: boolean = false) => {
     setIsLoading(true);
     const tempId = crypto.randomUUID();
@@ -329,11 +445,29 @@ export default function ChatPage() {
       });
 
       if (!res.ok && res.status === 400) {
+        const errorData = await res.json().catch(() => ({}));
+        let typesStr = "";
+        let redactedTypes = undefined;
+        if (errorData.detail && errorData.detail.action === "BLOCK") {
+           const uniqueTypes = Array.from(new Set((errorData.detail.blocked_types || []).map((t: any) => t.type)));
+           typesStr = uniqueTypes.join(', ');
+           redactedTypes = errorData.detail.blocked_types;
+        }
+        const explanation = `I couldn't process this because it contains sensitive information (${typesStr}). For your security, the transmission was blocked.`;
+
         // Remove the ghost 'sending' bubble, then add the blocked one
         setMessages(prev => [
           ...prev.filter(m => m.id !== tempId),
-          { id: crypto.randomUUID(), role: 'user' as const, content: text, status: 'blocked' as const }
+          { id: crypto.randomUUID(), role: 'user' as const, content: text, status: 'blocked' as const, redactedTypes },
+          { id: crypto.randomUUID(), role: 'model' as const, content: explanation, status: 'clear' as const }
         ]);
+        
+        fetch(`${API_BASE_URL}/api/v1/sessions/save-blocked`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Basic ${authHeader}` },
+          body: JSON.stringify({ session_id: currentSessionId, message: text, model_explanation: explanation })
+        }).then(() => loadSessions()).catch(e => console.error('Failed to save blocked message', e));
+
         setIsLoading(false);
         return;
       }
@@ -400,11 +534,19 @@ export default function ChatPage() {
   };
 
   const renderMessageContent = (msgId: string, content: string, redactedTypes?: RedactedType[], role?: string) => {
+    let displayContent = content;
+    if (role === 'user' && content.startsWith('[Document: ')) {
+      const firstLineEnd = content.indexOf('\n');
+      if (firstLineEnd !== -1) {
+        displayContent = content.substring(0, firstLineEnd);
+      }
+    }
+
     if (!redactedTypes || redactedTypes.length === 0) {
-      return content;
+      return displayContent;
     }
     
-    let parts: (string | React.ReactNode)[] = [content];
+    let parts: (string | React.ReactNode)[] = [displayContent];
     
     redactedTypes.forEach(rt => {
       const originalLabel = rt.type.toUpperCase().replace(/ /g, '_');
@@ -681,36 +823,43 @@ export default function ChatPage() {
                   transition={{ duration: 0.2 }}
                   className="w-full flex flex-col items-center justify-center"
                 >
-                  <h1 className="text-4xl font-serif text-[#2A1F1A] mb-8 flex items-center gap-3">
+                  <h1 className="text-4xl font-serif text-[#2A1F1A] mb-8 flex items-start gap-1">
                   <motion.span 
                     animate={{ rotate: 360 }} 
                     transition={{ repeat: Infinity, duration: 20, ease: "linear" }}
-                    className="text-[#C2543A] text-5xl font-sans inline-block origin-center"
+                    className="text-[#C2543A] text-4xl font-sans inline-block origin-center -mt-1"
                   >*</motion.span> {getGreeting()}
                 </h1>
 
                 {/* Centered Input Area */}
                 <div className="w-full max-w-3xl relative">
-                  <div id="tour-chat-input" className="relative flex flex-col w-full bg-white border border-[#E0D9C8] rounded-2xl shadow-sm focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/50 transition-all">
+                  <div id="tour-chat-input" className="relative flex flex-row items-end w-full bg-white border border-[#E0D9C8] rounded-2xl shadow-sm focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/50 transition-all p-2 gap-2">
+                    <input type="file" ref={emptyFileInputRef} onChange={(e) => { handleFileUpload(e); e.target.value = ''; }} className="hidden" />
+                    <button 
+                      onClick={() => emptyFileInputRef.current?.click()}
+                      disabled={isLoading}
+                      className="p-2.5 text-muted-foreground hover:bg-black/5 hover:text-foreground rounded-xl transition-all shrink-0"
+                      title="Upload Document"
+                    >
+                      <Paperclip size={20} />
+                    </button>
                     <textarea
                       ref={textareaRef}
                       value={input}
                       onChange={handleInput}
                       onKeyDown={handleKeyDown}
                       placeholder={placeholders[placeholderIndex]}
-                      className="w-full bg-transparent border-none px-4 pt-4 pb-2 text-[15px] placeholder:text-muted-foreground focus:ring-0 focus:outline-none resize-none min-h-[60px]"
+                      className="flex-1 bg-transparent border-none px-2 py-2.5 text-[15px] placeholder:text-muted-foreground focus:ring-0 focus:outline-none resize-none max-h-[200px]"
                       rows={1}
                       disabled={isLoading}
                     />
-                    <div className="flex items-center justify-end px-3 pb-3">
-                      <button 
-                        onClick={handleSendMessage}
-                        disabled={!input.trim() || isLoading}
-                        className="p-2 bg-[#2A1F1A] hover:bg-black disabled:opacity-30 text-white rounded-lg flex items-center justify-center transition-all shrink-0"
-                      >
-                        <Send size={16} />
-                      </button>
-                    </div>
+                    <button 
+                      onClick={handleSendMessage}
+                      disabled={!input.trim() || isLoading}
+                      className="p-2.5 bg-[#2A1F1A] hover:bg-black disabled:opacity-30 text-white rounded-xl flex items-center justify-center transition-all shrink-0"
+                    >
+                      <Send size={18} />
+                    </button>
                   </div>
                 </div>
               </motion.div>
@@ -777,7 +926,7 @@ export default function ChatPage() {
                       <div className={cn(
                         "rounded-2xl px-5 py-3 text-[15px] leading-relaxed relative",
                         msg.role === 'user' ? "bg-primary text-primary-foreground rounded-tr-sm shadow-sm" : "bg-card text-card-foreground rounded-tl-sm shadow-sm border border-border",
-                        msg.status === 'blocked' && "bg-destructive text-destructive-foreground opacity-90 line-through decoration-2"
+                        msg.status === 'blocked' && "bg-destructive text-destructive-foreground opacity-90"
                       )}>
                         {msg.role === 'model' ? (
                            msg.status === 'sending' ? (
@@ -822,9 +971,6 @@ export default function ChatPage() {
                           <div className="text-[11px] text-destructive font-bold flex items-center gap-1 uppercase tracking-wider">
                             <ShieldBan size={12} /> Blocked
                           </div>
-                          <div className="text-[13px] text-destructive bg-destructive/10 px-3 py-2 rounded-lg mt-1 max-w-sm text-right border border-destructive/20">
-                             Transmission halted. Message contained critical PII.
-                          </div>
                        </div>
                     )}
                   </div>
@@ -842,26 +988,33 @@ export default function ChatPage() {
         {messages.length > 0 && (
           <div className="p-4 bg-gradient-to-t from-[#FAF9F5] via-[#FAF9F5] to-transparent pt-10">
             <div className="max-w-3xl mx-auto relative">
-              <div className="relative flex flex-col w-full bg-white border border-[#E0D9C8] rounded-2xl shadow-sm focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/50 transition-all">
+              <div className="relative flex flex-row items-end w-full bg-white border border-[#E0D9C8] rounded-2xl shadow-sm focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/50 transition-all p-2 gap-2">
+                <input type="file" ref={bottomFileInputRef} onChange={handleFileUpload} className="hidden" />
+                <button 
+                  onClick={() => bottomFileInputRef.current?.click()}
+                  disabled={isLoading}
+                  className="p-2.5 text-muted-foreground hover:bg-black/5 hover:text-foreground rounded-xl transition-all shrink-0"
+                  title="Upload Document"
+                >
+                  <Paperclip size={20} />
+                </button>
                 <textarea
                   ref={textareaRef}
                   value={input}
                   onChange={handleInput}
                   onKeyDown={handleKeyDown}
                   placeholder={placeholders[placeholderIndex]}
-                  className="w-full bg-transparent border-none px-4 pt-4 pb-2 text-[15px] placeholder:text-muted-foreground focus:ring-0 focus:outline-none resize-none min-h-[60px]"
+                  className="flex-1 bg-transparent border-none px-2 py-2.5 text-[15px] placeholder:text-muted-foreground focus:ring-0 focus:outline-none resize-none max-h-[200px]"
                   rows={1}
                   disabled={isLoading}
                 />
-                <div className="flex items-center justify-end px-3 pb-3">
-                  <button 
-                    onClick={handleSendMessage}
-                    disabled={!input.trim() || isLoading}
-                    className="p-2 bg-[#2A1F1A] hover:bg-black disabled:opacity-30 text-white rounded-lg flex items-center justify-center transition-all shrink-0"
-                  >
-                    <Send size={16} />
-                  </button>
-                </div>
+                <button 
+                  onClick={handleSendMessage}
+                  disabled={!input.trim() || isLoading}
+                  className="p-2.5 bg-[#2A1F1A] hover:bg-black disabled:opacity-30 text-white rounded-xl flex items-center justify-center transition-all shrink-0"
+                >
+                  <Send size={18} />
+                </button>
               </div>
               <div className="text-center mt-3">
                 <p className="text-[12px] text-muted-foreground font-medium tracking-tight flex items-center justify-center gap-1.5">

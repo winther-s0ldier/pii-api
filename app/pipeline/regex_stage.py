@@ -35,7 +35,7 @@ _PATTERNS: List[_Pattern] = [
     _Pattern("hex_ipv4",        "ipv4",        re.compile(r"\b0x[0-9a-fA-F]{8}\b"), confidence="medium"),
     _Pattern("phone_us",        "phone",       re.compile(r"\b(?:\+?\s*1)?\s*\(?\s*\d\s*\d\s*\d\s*\)?\s*[\-\.]?\s*\d\s*\d\s*\d\s*[\-\.]?\s*\d\s*\d\s*\d\s*\d\b"), confidence="medium"),
     _Pattern("bearer_token",    "bearer",      re.compile(r"(?i)bearer\s+[A-Za-z0-9\-._~+/]+=*")),
-    _Pattern("password_kv",     "password",    re.compile(r"(?i)(password|passwd|pwd|secret|token|api_?key|apikey|auth_?token|auth|key|access_?code)[\'\"\s]*[:=]+[\s>]*[\'\"]?\S{6,}")),
+    _Pattern("password_kv",     "password",    re.compile(r"(?i)(password|passwd|pwd|secret|api_?key|apikey|auth_?token|access_?code)[\'\"\s]*[:=]+[\s>]*[\'\"]?\S{6,}")),
     _Pattern("aadhar",          "tax ID",      re.compile(r"\b\d{4}[\s\-]\d{4}[\s\-]\d{4}\b(?![\s\-]\d)"), confidence="high"),
     _Pattern("pan_card",        "tax ID",      re.compile(r"\b[A-Z]{5}[0-9]{4}[A-Z]{1}\b"), confidence="high"),
     _Pattern("voter_id",        "tax ID",      re.compile(r"\b[A-Z]{3}[0-9]{7}\b"), confidence="high"),
@@ -43,6 +43,7 @@ _PATTERNS: List[_Pattern] = [
     _Pattern("phone_in",        "phone",       re.compile(r"\b(?:\+91[\-\s]?)?[0]?(?:[6-9]\d{9})\b"), confidence="high"),
     _Pattern("fake_cc",         "credit_card", re.compile(r"\b(?:\d{4}[-\s]?){3}\d{4}\b|\b\d{15,16}\b"), confidence="high"),
     _Pattern("spelled_numbers", "ssn",         re.compile(r"(?:(?:zero|one|two|three|four|five|six|seven|eight|nine)[\s\-,]*){9,}"), confidence="high"),
+    _Pattern("spelled_date",    "date_time",   re.compile(r"(?i)\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(?:two|twenty|nineteen)\s+[a-z]+\s*[a-z]*\b"), confidence="medium"),
 ]
 
 
@@ -59,12 +60,14 @@ def detect(text: str) -> List[Detection]:
                 det_type = "phone number"
             elif p.name == "spelled_numbers":
                 det_type = "ssn"
+            elif p.name == "spelled_date":
+                det_type = "date_time"
             elif p.name == "fake_cc":
                 det_type = "credit_card"
             elif p.name in ["aadhar", "pan_card", "voter_id"]:
                 det_type = "tax ID"
             elif p.name == "upi_id":
-                det_type = "email"  # Treat UPI similar to email for reduction
+                det_type = "email"  
             
             detections.append(Detection(
                 start=m.start(),

@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.orm import Session
+from typing import Optional
 from google import genai
 import os
 from dotenv import load_dotenv
@@ -134,12 +135,14 @@ async def check_message(request: Request, body: CheckRequest, db: Session = Depe
         db.add(blocked_msg)
         db.commit()
         
+        blocked_redacted_types = [rt for rt in redacted_types_dicts if rt["type"] in block_set]
+
         raise HTTPException(
             status_code=400,
             detail=BlockResponse(
                 action="BLOCK",
                 warning=get_block_warning(primary_type),
-                blocked_types=[RedactedType(**rt) for rt in redacted_types_dicts]
+                blocked_types=[RedactedType(**rt) for rt in blocked_redacted_types]
             ).model_dump()
         )
 
@@ -252,10 +255,12 @@ async def preview_message(request: Request, body: CheckRequest, db: Session = De
         blocked_types = [d.type for d in detections if d.type in block_set]
         primary_type = blocked_types[0] if blocked_types else "code"
         
+        blocked_redacted_types = [rt for rt in redacted_types if rt.type in block_set]
+        
         return BlockResult(
             action="BLOCK",
             warning=get_block_warning(primary_type),
-            blocked_types=redacted_types
+            blocked_types=blocked_redacted_types
         )
     
     return CheckResult(
@@ -310,6 +315,7 @@ class BlockedMessageSave(_BaseModel):
     session_id: str
     message: str
     user_id: str = "default_user"
+    model_explanation: Optional[str] = None
 
 @app.post("/api/v1/sessions/save-blocked")
 def save_blocked_message(body: BlockedMessageSave, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
@@ -322,6 +328,9 @@ def save_blocked_message(body: BlockedMessageSave, db: Session = Depends(get_db)
         db.commit()
     blocked_msg = ChatMessage(session_id=body.session_id, role="blocked", content=body.message)
     db.add(blocked_msg)
+    if body.model_explanation:
+        model_msg = ChatMessage(session_id=body.session_id, role="model", content=body.model_explanation)
+        db.add(model_msg)
     db.commit()
     return {"status": "saved"}
 
@@ -359,10 +368,12 @@ def check_message_batch(request: Request, body: BatchCheckRequest, db: Session =
             blocked_types = [d.type for d in detections if d.type in block_set]
             primary_type = blocked_types[0] if blocked_types else "code"
             
+            blocked_redacted_types = [rt for rt in redacted_types if rt.type in block_set]
+            
             results.append(BlockResult(
                 action="BLOCK",
                 warning=get_block_warning(primary_type),
-                blocked_types=redacted_types
+                blocked_types=blocked_redacted_types
             ))
         else:
             results.append(CheckResult(
@@ -817,4 +828,78 @@ def import_custom_labels_xlsx_confirm(payload: ImportConfirmPayload, db: Session
     db.commit()
     return {"status": "success", "imported": imported_count}
 
+from fastapi import Form
+from app.pipeline.document_stage import extract_text
+import tempfile
+import os
+
+@app.post("/api/v1/document/upload", response_model=Union[CheckResult, BlockResult])
+@limiter.limit("10/minute")
+async def upload_document(
+    request: Request, 
+    file: UploadFile = File(...), 
+    user_id: str = Form("default_user"),
+    session_id: str = Form("default_session"),
+    db: Session = Depends(get_db), 
+    credentials: HTTPBasicCredentials = Depends(verify_credentials)
+):
+    tier_config, custom_labels = get_tier_config_helper(db, user_id)
+    
+    # Save the uploaded file temporarily
+    suffix = os.path.splitext(file.filename)[1] if file.filename else ".tmp"
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        tmp_path = tmp.name
+        content = await file.read()
+        tmp.write(content)
+        
+    try:
+        # Extract text using markitdown
+        extracted_text = extract_text(tmp_path)
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+            
+    if not extracted_text.strip():
+        raise HTTPException(status_code=400, detail="Could not extract text from document, or document was empty.")
+        
+    # Process the extracted text using the standard pipeline
+    processed_text, detections, action = await asyncio.to_thread(pipeline.run, extracted_text, [], [], tier_config, custom_labels)
+    
+    detected_types_list = [d.type for d in detections]
+    flagged_sequences_list = [extracted_text[d.start:d.end] for d in detections]
+    
+    stat_log = StatLog(
+        user_id=user_id,
+        session_id=session_id,
+        action=action,
+        detected_types=json.dumps(detected_types_list),
+        flagged_sequences=json.dumps(flagged_sequences_list)
+    )
+    db.add(stat_log)
+    db.commit()
+    
+    redacted_types = [
+        RedactedType(type=d.type, subtype=d.subtype, confidence=d.confidence, value=extracted_text[d.start:d.end])
+        for d in detections
+    ]
+    
+    if action == "BLOCK":
+        block_set = tier_config["block"] if tier_config else TIER_BLOCK
+        blocked_types = [d.type for d in detections if d.type in block_set]
+        primary_type = blocked_types[0] if blocked_types else "code"
+        
+        blocked_redacted_types = [rt for rt in redacted_types if rt.type in block_set]
+        
+        return BlockResult(
+            action="BLOCK",
+            warning=get_block_warning(primary_type),
+            blocked_types=blocked_redacted_types
+        )
+    
+    return CheckResult(
+        action=action,
+        was_redacted=(action == "REDACT"),
+        message=processed_text,
+        redacted_types=redacted_types
+    )
 

@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 class CheckRequest(BaseModel):
     user_id: str = Field(default="default_user")
     session_id: str = Field(default="default_session")
-    message: str = Field(..., min_length=1, max_length=10_000)
+    message: str = Field(..., min_length=1, max_length=5_000_000)
     allowed_pii: List[str] = Field(default=[])
     ignored_values: List[str] = Field(default=[])
 
