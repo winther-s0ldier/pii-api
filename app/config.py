@@ -14,7 +14,7 @@ TIER_BLOCK = {
 }
 
 TIER_REDACT = {
-    "ssn",
+    "email", "ssn",
     "passport number", "driver's license", "tax ID",
     "US SSN", "US passport", "US driver license", "US ITIN", "UK NHS number"
 }

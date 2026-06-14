@@ -1,5 +1,4 @@
 from typing import List, Tuple
-from fastapi import HTTPException
 from app.pipeline.base import Detection
 from app.pipeline import regex_stage, entropy_stage, luhn_stage, code_stage
 from app.config import TIER_BLOCK, TIER_REDACT, TIER_AUDIT, get_block_warning
@@ -138,8 +137,12 @@ def run(text: str, allowed_pii: List[str] = None, ignored_values: List[str] = No
                         start += len(w_lower)
             except: pass
     
-    # Determine GLiNER labels
-    gliner_labels = ["person", "organization", "location", "email address", "phone number"]
+    # Determine GLiNER labels dynamically from our tier config
+    if tier_config is None:
+        from app.config import TIER_BLOCK, TIER_REDACT, TIER_AUDIT
+        gliner_labels = list(TIER_BLOCK | TIER_REDACT | TIER_AUDIT)
+    else:
+        gliner_labels = list(set(tier_config.get("block", [])) | set(tier_config.get("redact", [])) | set(tier_config.get("audit", [])))
     # We DO NOT add custom labels to GLiNER. Custom labels are strictly rule-based (Regex/Dictionary).
             
     hf_space_url = os.getenv("HF_SPACE_URL")
@@ -166,27 +169,38 @@ def run(text: str, allowed_pii: List[str] = None, ignored_values: List[str] = No
         except Exception as e:
             logger.error(f"Failed to call HF Space: {e}")
     else:
-        # Fallback to local GLiNER if installed
+        # Fallback to local GLiNER2 if installed
         try:
-            from gliner import GLiNER
-            # Load a small fast model for local dev if not loaded
-            if not hasattr(run, "gliner_model"):
-                run.gliner_model = GLiNER.from_pretrained("urchade/gliner_tiny")
+            from gliner2 import GLiNER2
             
-            entities = run.gliner_model.predict_entities(text, gliner_labels, threshold=0.5)
-            for ent in entities:
-                all_detections.append(
-                    Detection(
-                        start=ent["start"],
-                        end=ent["end"],
-                        type=ent["label"],
-                        subtype="gliner",
-                        confidence="high" if ent["score"] > 0.8 else "medium",
-                        engine="local_gliner"
+            # Suppress GLiNER output that crashes Windows terminals with emojis
+            def _mock_print_config(self, config): pass
+            GLiNER2._print_config = _mock_print_config
+            
+            if not hasattr(run, "gliner_model"):
+                # We initialize with a CPU fallback if needed, but rely on default torch behavior
+                run.gliner_model = GLiNER2.from_pretrained("fastino/gliner2-privacy-filter-PII-multi")
+            
+            # gliner2 expects a dictionary of labels to descriptions. 
+            # If gliner_labels is a list, we'll just create a dummy dictionary
+            labels_dict = {l: l for l in gliner_labels} if isinstance(gliner_labels, list) else gliner_labels
+            
+            extracted = run.gliner_model.extract_entities(text, labels_dict, include_spans=True, include_confidence=True)
+            for label, items in extracted.get("entities", {}).items():
+                if not items: continue
+                for item in items:
+                    all_detections.append(
+                        Detection(
+                            start=item["start"],
+                            end=item["end"],
+                            type=label,
+                            subtype="gliner2",
+                            confidence="high" if item.get("confidence", 1.0) > 0.8 else "medium",
+                            engine="local_gliner2"
+                        )
                     )
-                )
-        except ImportError:
-            pass
+        except Exception as e:
+            logger.error(f"Local GLiNER2 fallback failed: {e}")
 
 
     merged = _merge_spans(all_detections, tier_config)
@@ -210,16 +224,16 @@ def run(text: str, allowed_pii: List[str] = None, ignored_values: List[str] = No
         if d.type in allowed_pii:
             continue
             
-        if d.type == "person":
-            context_window = text[max(0, d.start - 20):d.end + 20].lower()
-            greetings = ["hi ", "hello ", "hey ", "my name is", "i am ", "i'm "]
+        if d.type in ["person", "organization", "ORG"]:
+            context_window = text[max(0, d.start - 30):d.end + 30].lower()
+            greetings = ["hi ", "hello ", "hey ", "my name is", "i am ", "i'm ", "this is ", "call me "]
             if any(g in context_window for g in greetings):
                 continue
                 
-        if d.type in ["location", "date_time", "date", "time", "GPE", "LOC", "DATE", "TIME"]:
+        if d.type in ["location", "date_time", "date", "time", "GPE", "LOC", "DATE", "TIME", "date time"]:
             context_window = text[max(0, d.start - 40):d.end + 40].lower()
-            weather_terms = ["weather", "forecast", "temperature", "raining", "sunny", "time is"]
-            if any(w in context_window for w in weather_terms):
+            benign_terms = ["weather", "forecast", "temperature", "raining", "sunny", "time is", "i am from ", "i'm from ", "living in ", "i live in ", "visiting ", "born in ", "heading to ", "traveling to ", "how are you"]
+            if any(w in context_window for w in benign_terms):
                 continue
                 
         filtered.append(d)

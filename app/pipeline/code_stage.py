@@ -24,7 +24,7 @@ def detect(text: str) -> List[Detection]:
             type="code", subtype="markdown_fence", confidence="high"
         ))
 
-    # 2. Uber Heuristic Density Scoring
+    # 2. Heuristic Density Scoring
     keyword_hits = []
     for sig in _SIGNATURES:
         for m in sig.finditer(text):

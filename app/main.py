@@ -15,7 +15,16 @@ from app.models import (
 from app.pipeline import pipeline
 from app.pipeline import regex_stage
 from app.config import get_block_warning, TIER_BLOCK, TIER_REDACT, TIER_AUDIT
-from app.db import init_db, get_db, ChatSession, ChatMessage, UserConfig, StatLog
+from app.db import init_db, get_db, ChatSession, ChatMessage, UserConfig, StatLog, CustomLabel
+import json
+from collections import Counter
+from sqlalchemy import func
+from fastapi.responses import StreamingResponse
+from google.genai import types
+import google.genai as genai
+import openpyxl
+from openpyxl.worksheet.datavalidation import DataValidation
+import io
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -38,17 +47,10 @@ def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
     return credentials
 
 limiter = Limiter(key_func=get_remote_address)
-pipeline_semaphore = None
-
 app = FastAPI(
     title="PII Detection API",
     description="API for detecting and anonymizing PII data",
 )
-
-@app.on_event("startup")
-async def startup_event():
-    global pipeline_semaphore
-    pipeline_semaphore = asyncio.Semaphore(20)
 
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -62,6 +64,23 @@ app.add_middleware(
 
 init_db()
 
+def get_tier_config_helper(db, user_id):
+    user_config = db.query(UserConfig).filter(UserConfig.user_id == user_id).first()
+    custom_labels = db.query(CustomLabel).all()
+    if user_config:
+        tier_config = {"block": set(json.loads(user_config.tier_block)), "redact": set(json.loads(user_config.tier_redact)), "audit": set(json.loads(user_config.tier_audit))}
+    else:
+        tier_config = {"block": set(TIER_BLOCK), "redact": set(TIER_REDACT), "audit": set(TIER_AUDIT)}
+    for cl in custom_labels:
+        if cl.tier == "tier_block":
+            tier_config["block"].add(cl.name)
+        elif cl.tier == "tier_redact":
+            tier_config["redact"].add(cl.name)
+        elif cl.tier == "tier_audit":
+            tier_config["audit"].add(cl.name)
+    return tier_config, custom_labels
+
+
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 @app.get("/")
@@ -71,36 +90,9 @@ def read_root():
 @app.post("/api/v1/check")
 @limiter.limit("20/minute")
 async def check_message(request: Request, body: CheckRequest, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
-    import asyncio
-    import json
-    from fastapi.responses import StreamingResponse
-    from app.config import TIER_BLOCK
-
-    user_config = db.query(UserConfig).filter(UserConfig.user_id == body.user_id).first()
-    from app.db import CustomLabel
-    custom_labels = db.query(CustomLabel).all()
-
-    if user_config:
-        tier_config = {
-            "block": set(json.loads(user_config.tier_block)),
-            "redact": set(json.loads(user_config.tier_redact)),
-            "audit": set(json.loads(user_config.tier_audit))
-        }
-    else:
-        from app.config import TIER_BLOCK, TIER_REDACT, TIER_AUDIT
-        tier_config = {"block": set(TIER_BLOCK), "redact": set(TIER_REDACT), "audit": set(TIER_AUDIT)}
-
-    for cl in custom_labels:
-        if cl.tier == "tier_block":
-            tier_config["block"].add(cl.name)
-        elif cl.tier == "tier_redact":
-            tier_config["redact"].add(cl.name)
-        elif cl.tier == "tier_audit":
-            tier_config["audit"].add(cl.name)
-
+    tier_config, custom_labels = get_tier_config_helper(db, body.user_id)
     # 1. Async Pipeline Check
-    async with pipeline_semaphore:
-        processed_text, detections, action = await asyncio.to_thread(pipeline.run, body.message, body.allowed_pii, body.ignored_values, tier_config, custom_labels)
+    processed_text, detections, action = await asyncio.to_thread(pipeline.run, body.message, body.allowed_pii, body.ignored_values, tier_config, custom_labels)
     
     # Log stat
     detected_types_list = [d.type for d in detections]
@@ -188,7 +180,7 @@ async def check_message(request: Request, body: CheckRequest, db: Session = Depe
                 gemini_history.append({"role": msg.role, "parts": [{"text": msg.content}]})
                 
             try:
-                from google.genai import types
+            
                 client = genai.Client(api_key=api_key)
                 
                 system_prompt = (
@@ -235,31 +227,8 @@ from app.models import BatchCheckRequest, BatchCheckResponse, CheckResult, Block
 @app.post("/api/v1/preview", response_model=Union[CheckResult, BlockResult])
 @limiter.limit("30/minute")
 async def preview_message(request: Request, body: CheckRequest, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
-    import json
-    user_config = db.query(UserConfig).filter(UserConfig.user_id == body.user_id).first()
-    from app.db import CustomLabel
-    custom_labels = db.query(CustomLabel).all()
-
-    if user_config:
-        tier_config = {
-            "block": set(json.loads(user_config.tier_block)),
-            "redact": set(json.loads(user_config.tier_redact)),
-            "audit": set(json.loads(user_config.tier_audit))
-        }
-    else:
-        from app.config import TIER_BLOCK, TIER_REDACT, TIER_AUDIT
-        tier_config = {"block": set(TIER_BLOCK), "redact": set(TIER_REDACT), "audit": set(TIER_AUDIT)}
-
-    for cl in custom_labels:
-        if cl.tier == "tier_block":
-            tier_config["block"].add(cl.name)
-        elif cl.tier == "tier_redact":
-            tier_config["redact"].add(cl.name)
-        elif cl.tier == "tier_audit":
-            tier_config["audit"].add(cl.name)
-
-    async with pipeline_semaphore:
-        processed_text, detections, action = await asyncio.to_thread(pipeline.run, body.message, body.allowed_pii, body.ignored_values, tier_config, custom_labels)
+    tier_config, custom_labels = get_tier_config_helper(db, body.user_id)
+    processed_text, detections, action = await asyncio.to_thread(pipeline.run, body.message, body.allowed_pii, body.ignored_values, tier_config, custom_labels)
         
     detected_types_list = [d.type for d in detections]
     flagged_sequences_list = [body.message[d.start:d.end] for d in detections]
@@ -309,7 +278,7 @@ def get_session(session_id: str, db: Session = Depends(get_db), credentials: HTT
         raise HTTPException(status_code=404, detail="Session not found")
     messages = db.query(ChatMessage).filter(ChatMessage.session_id == session_id).order_by(ChatMessage.created_at).all()
     
-    import json
+
     msg_infos = []
     for m in messages:
         rt = []
@@ -361,18 +330,7 @@ from app.models import BatchCheckRequest, BatchCheckResponse, CheckResult, Block
 @app.post("/api/v1/check_batch", response_model=BatchCheckResponse)
 @limiter.limit("10/minute")
 def check_message_batch(request: Request, body: BatchCheckRequest, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
-    import json
-    user_config = db.query(UserConfig).filter(UserConfig.user_id == body.user_id).first()
-    tier_config = None
-    if user_config:
-        tier_config = {
-            "block": set(json.loads(user_config.tier_block)),
-            "redact": set(json.loads(user_config.tier_redact)),
-            "audit": set(json.loads(user_config.tier_audit))
-        }
-
-    from app.db import CustomLabel
-    custom_labels = db.query(CustomLabel).all()
+    tier_config, custom_labels = get_tier_config_helper(db, body.user_id)
 
     results = []
     for msg in body.messages:
@@ -421,7 +379,7 @@ def health():
 
 @app.get("/api/v1/admin/config/{user_id}", response_model=TierConfigResponse)
 def get_user_config(user_id: str, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
-    import json
+
     user_config = db.query(UserConfig).filter(UserConfig.user_id == user_id).first()
     if not user_config:
         return TierConfigResponse(
@@ -439,7 +397,7 @@ def get_user_config(user_id: str, db: Session = Depends(get_db), credentials: HT
 
 @app.post("/api/v1/admin/config/{user_id}")
 def update_user_config(user_id: str, body: TierConfigUpdate, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
-    import json
+
     user_config = db.query(UserConfig).filter(UserConfig.user_id == user_id).first()
     if not user_config:
         user_config = UserConfig(user_id=user_id)
@@ -454,44 +412,40 @@ def update_user_config(user_id: str, body: TierConfigUpdate, db: Session = Depen
 from typing import Optional
 from datetime import datetime
 
-@app.get("/api/v1/admin/stats", response_model=StatsResponse)
-def get_global_stats(start_time: Optional[datetime] = None, end_time: Optional[datetime] = None, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
-    from sqlalchemy import func
-    import json
-    from collections import Counter
-    
+def fetch_stats(db, user_id=None, start_time=None, end_time=None):
     query = db.query(StatLog)
+    if user_id:
+        query = query.filter(StatLog.user_id == user_id)
     if start_time:
         query = query.filter(StatLog.created_at >= start_time)
     if end_time:
         query = query.filter(StatLog.created_at <= end_time)
-        
     total = query.with_entities(func.count(StatLog.id)).scalar() or 0
     actions = query.with_entities(StatLog.action, func.count(StatLog.id)).group_by(StatLog.action).all()
-    
     type_counts = Counter()
     seq_counts = Counter()
     for log in query.with_entities(StatLog.detected_types, StatLog.flagged_sequences).all():
-        types = json.loads(log[0])
-        type_counts.update(types)
+        type_counts.update(json.loads(log[0]))
         if log[1]:
-            seqs = json.loads(log[1])
-            seq_counts.update(seqs)
-            
-    top_seqs = seq_counts.most_common(10)
-        
+            seq_counts.update(json.loads(log[1]))
     return StatsResponse(
         total_requests=total,
         actions=[StatCount(name=a[0], count=a[1]) for a in actions],
         detected_types=[StatCount(name=k, count=v) for k, v in type_counts.items()],
-        top_sequences=[StatCount(name=k, count=v) for k, v in top_seqs]
+        top_sequences=[StatCount(name=k, count=v) for k, v in seq_counts.most_common(10)]
     )
+
+@app.get("/api/v1/admin/stats", response_model=StatsResponse)
+def get_global_stats(start_time: Optional[datetime] = None, end_time: Optional[datetime] = None, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
+    return fetch_stats(db, None, start_time, end_time)
 
 @app.get("/api/v1/admin/stats/{user_id}", response_model=StatsResponse)
 def get_user_stats(user_id: str, start_time: Optional[datetime] = None, end_time: Optional[datetime] = None, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
-    from sqlalchemy import func
-    import json
-    from collections import Counter
+    return fetch_stats(db, user_id, start_time, end_time)
+
+@app.get("/api/v1/admin/stats/{user_id}", response_model=StatsResponse)
+def get_user_stats(user_id: str, start_time: Optional[datetime] = None, end_time: Optional[datetime] = None, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
+
     
     base_query = db.query(StatLog).filter(StatLog.user_id == user_id)
     if start_time:
@@ -523,7 +477,7 @@ def get_user_stats(user_id: str, start_time: Optional[datetime] = None, end_time
 @app.get("/api/v1/admin/logs/{user_id}")
 def get_user_logs(user_id: str, limit: int = 50, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
     logs = db.query(StatLog).filter(StatLog.user_id == user_id).order_by(StatLog.created_at.desc()).limit(limit).all()
-    import json
+
     return [{
         "id": log.id,
         "action": log.action,
@@ -551,7 +505,7 @@ from app.db import CustomLabel
 
 @app.post("/api/v1/admin/custom_labels", response_model=CustomLabelResponse)
 def create_custom_label(label: CustomLabelCreate, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
-    import json
+
     existing = db.query(CustomLabel).filter(CustomLabel.name == label.name).first()
     if existing:
         raise HTTPException(status_code=400, detail="Label already exists")
@@ -563,8 +517,8 @@ def create_custom_label(label: CustomLabelCreate, db: Session = Depends(get_db),
     api_key = os.getenv("GEMINI_API_KEY", "").strip('"').strip("'")
     if api_key:
         try:
-            from google.genai import types
-            import google.genai as genai
+        
+        
             client = genai.Client(api_key=api_key)
             words_context = ""
             if label.dictionary_words:
@@ -600,7 +554,7 @@ def create_custom_label(label: CustomLabelCreate, db: Session = Depends(get_db),
 
 @app.get("/api/v1/admin/custom_labels", response_model=list[CustomLabelResponse])
 def get_custom_labels(db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
-    import json
+
     labels = db.query(CustomLabel).all()
     results = []
     for lbl in labels:
@@ -634,7 +588,7 @@ class CustomLabelUpdate(BaseModel):
 
 @app.put("/api/v1/admin/custom_labels/{label_id}", response_model=CustomLabelResponse)
 def update_custom_label(label_id: int, update: CustomLabelUpdate, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
-    import json
+
     db_label = db.query(CustomLabel).filter(CustomLabel.id == label_id).first()
     if not db_label:
         raise HTTPException(status_code=404, detail="Label not found")
@@ -665,9 +619,9 @@ import io
 
 @app.get("/api/v1/admin/custom_labels/xlsx")
 def export_custom_labels_xlsx(db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
-    import openpyxl
-    from openpyxl.worksheet.datavalidation import DataValidation
-    import io
+
+
+
     
     labels = db.query(CustomLabel).all()
     
@@ -697,10 +651,10 @@ def export_custom_labels_xlsx(db: Session = Depends(get_db), credentials: HTTPBa
 
 @app.get("/api/v1/admin/dictionary/xlsx")
 def export_dictionary_xlsx(db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
-    import json
-    import openpyxl
-    from openpyxl.worksheet.datavalidation import DataValidation
-    import io
+
+
+
+
     
     labels = db.query(CustomLabel).all()
     
@@ -734,12 +688,12 @@ def export_dictionary_xlsx(db: Session = Depends(get_db), credentials: HTTPBasic
 
 @app.post("/api/v1/admin/custom_labels/import/preview")
 async def import_custom_labels_xlsx_preview(file: UploadFile = File(...), db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
-    import openpyxl
-    import io
+
+
     import os
-    import json
-    from google.genai import types
-    import google.genai as genai
+
+
+
     from pydantic import BaseModel
     
     class TierResponse(BaseModel):
@@ -817,10 +771,10 @@ class ImportConfirmPayload(BaseModel):
 
 @app.post("/api/v1/admin/custom_labels/import/confirm")
 def import_custom_labels_xlsx_confirm(payload: ImportConfirmPayload, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
-    import json
+
     import os
-    from google.genai import types
-    import google.genai as genai
+
+
     
     api_key = os.getenv("GEMINI_API_KEY", "").strip('"').strip("'")
     client = genai.Client(api_key=api_key) if api_key else None
