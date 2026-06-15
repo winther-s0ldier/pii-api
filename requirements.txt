@@ -9,3 +9,5 @@ python-multipart
 markitdown
 gliner2
 openpyxl
+sentence-transformers
+psycopg2-binary

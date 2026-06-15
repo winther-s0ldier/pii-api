@@ -1,9 +1,9 @@
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 from pydantic import BaseModel, Field
 
 
 class CheckRequest(BaseModel):
-    user_id: str = Field(default="default_user")
+    user_id: str = Field(default="00000000-0000-0000-0000-000000000000")
     session_id: str = Field(default="default_session")
     message: str = Field(..., min_length=1, max_length=5_000_000)
     allowed_pii: List[str] = Field(default=[])
@@ -13,7 +13,7 @@ class CheckRequest(BaseModel):
 class RedactedType(BaseModel):
     type: str
     subtype: str
-    confidence: str
+    confidence: Union[float, str]
     value: str = ""
 
 

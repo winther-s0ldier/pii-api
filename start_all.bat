@@ -5,10 +5,10 @@ echo ========================================================
 
 echo.
 echo [1/2] Starting FastAPI Backend on Port 8000...
-start cmd /k "cd /d %~dp0 && call .\venv\Scripts\activate.bat && uvicorn app.main:app --reload"
+start cmd /k "cd /d %~dp0 && call .\venv\Scripts\activate.bat && uvicorn app.main:app --host 127.0.0.1 --reload"
 
 echo.
-echo [2/2] Starting Main App (Chat & Admin) on Port 3000...
+echo [2/2] Starting Main App (Chat ^& Admin) on Port 3000...
 start cmd /k "cd /d %~dp0frontend && npm run dev"
 
 echo.

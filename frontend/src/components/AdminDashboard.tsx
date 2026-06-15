@@ -92,6 +92,11 @@ export default function AdminDashboard() {
       const res = await fetch(`${API_BASE_URL}/api/v1/admin/stats${getTimeParams(globalTimeWindow)}`, {
         headers: { 'Authorization': `Basic ${backendAuth}` }
       });
+      if (res.status === 401) {
+        localStorage.removeItem('basic_auth');
+        window.location.href = '/admin/login';
+        return;
+      }
       if (res.ok) setStats(await res.json());
     } catch (e) {
       console.error(e);

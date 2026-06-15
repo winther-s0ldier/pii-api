@@ -36,9 +36,16 @@ import secrets
 
 security = HTTPBasic()
 
-def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
-    correct_username = secrets.compare_digest(credentials.username, "admin")
-    correct_password = secrets.compare_digest(credentials.password, "password")
+def verify_credentials(request: Request, credentials: HTTPBasicCredentials = Depends(security)):
+    if request.url.path.startswith("/api/v1/admin"):
+        expected_username = os.environ.get("API_ADMIN_USERNAME", "admin@email.com")
+        expected_password = os.environ.get("API_ADMIN_PASSWORD", "accesstoken")
+    else:
+        expected_username = os.environ.get("API_USER_USERNAME", "user@email.com")
+        expected_password = os.environ.get("API_USER_PASSWORD", "accesstoken")
+        
+    correct_username = secrets.compare_digest(credentials.username, expected_username)
+    correct_password = secrets.compare_digest(credentials.password, expected_password)
     if not (correct_username and correct_password):
         raise HTTPException(
             status_code=401,
@@ -84,6 +91,13 @@ def get_tier_config_helper(db, user_id):
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    import traceback
+    err = traceback.format_exc()
+    print("GLOBAL EXCEPTION:", err)
+    return JSONResponse(status_code=500, content={"detail": str(exc), "traceback": err})
+
 @app.get("/")
 def read_root():
     return {"status": "ok", "message": "PII Detection API is running"}
@@ -129,7 +143,7 @@ async def check_message(request: Request, body: CheckRequest, db: Session = Depe
         db_sess = db.query(ChatSession).filter(ChatSession.id == _session_id).first()
         if not db_sess:
             _title = body.message[:30] + "..." if len(body.message) > 30 else body.message
-            db_sess = ChatSession(id=_session_id, title=_title)
+            db_sess = ChatSession(id=_session_id, user_id=body.user_id, title=_title)
             db.add(db_sess)
         blocked_msg = ChatMessage(session_id=_session_id, role="blocked", content=body.message)
         db.add(blocked_msg)
@@ -151,7 +165,7 @@ async def check_message(request: Request, body: CheckRequest, db: Session = Depe
     db_session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
     if not db_session:
         title = body.message[:30] + "..." if len(body.message) > 30 else body.message
-        db_session = ChatSession(id=session_id, title=title)
+        db_session = ChatSession(id=session_id, user_id=body.user_id, title=title)
         db.add(db_session)
         db.commit()
 
@@ -436,9 +450,24 @@ def fetch_stats(db, user_id=None, start_time=None, end_time=None):
     type_counts = Counter()
     seq_counts = Counter()
     for log in query.with_entities(StatLog.detected_types, StatLog.flagged_sequences).all():
-        type_counts.update(json.loads(log[0]))
-        if log[1]:
-            seq_counts.update(json.loads(log[1]))
+        types_val = log[0]
+        if isinstance(types_val, str):
+            try:
+                types_val = json.loads(types_val)
+            except:
+                types_val = []
+        if isinstance(types_val, list):
+            type_counts.update(types_val)
+            
+        seq_val = log[1]
+        if seq_val:
+            if isinstance(seq_val, str):
+                try:
+                    seq_val = json.loads(seq_val)
+                except:
+                    seq_val = []
+            if isinstance(seq_val, list):
+                seq_counts.update(seq_val)
     return StatsResponse(
         total_requests=total,
         actions=[StatCount(name=a[0], count=a[1]) for a in actions],
@@ -489,14 +518,34 @@ def get_user_stats(user_id: str, start_time: Optional[datetime] = None, end_time
 def get_user_logs(user_id: str, limit: int = 50, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
     logs = db.query(StatLog).filter(StatLog.user_id == user_id).order_by(StatLog.created_at.desc()).limit(limit).all()
 
-    return [{
-        "id": log.id,
-        "action": log.action,
-        "detected_types": json.loads(log.detected_types),
-        "flagged_sequences": json.loads(log.flagged_sequences) if log.flagged_sequences else [],
-        "original_message": log.original_message,
-        "created_at": log.created_at.isoformat() + "Z"
-    } for log in logs]
+    result_logs = []
+    for log in logs:
+        types_val = log.detected_types
+        if isinstance(types_val, str):
+            try:
+                types_val = json.loads(types_val)
+            except:
+                types_val = []
+                
+        seq_val = log.flagged_sequences
+        if seq_val:
+            if isinstance(seq_val, str):
+                try:
+                    seq_val = json.loads(seq_val)
+                except:
+                    seq_val = []
+        else:
+            seq_val = []
+            
+        result_logs.append({
+            "id": log.id,
+            "action": log.action,
+            "detected_types": types_val,
+            "flagged_sequences": seq_val,
+            "original_message": log.original_message,
+            "created_at": log.created_at.isoformat() + "Z"
+        })
+    return result_logs
 
 
 @app.get("/api/v1/patterns")

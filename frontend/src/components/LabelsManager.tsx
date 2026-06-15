@@ -51,6 +51,11 @@ export default function LabelsManager() {
       const res = await fetch(`${API_BASE_URL}/api/v1/admin/config/${configUserId}`, {
         headers: { 'Authorization': `Basic ${backendAuth}` }
       });
+      if (res.status === 401) {
+        localStorage.removeItem('basic_auth');
+        window.location.href = '/admin/login';
+        return;
+      }
       if (res.ok) {
         setUserConfig(await res.json());
       } else {

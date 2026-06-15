@@ -5,3 +5,6 @@ gliner2
 presidio-analyzer
 torch
 spacy
+sentence-transformers
+markitdown  
+ 

@@ -31,10 +31,8 @@ def _merge_spans(detections: List[Detection], tier_config: dict = None) -> List[
     for current in sorted_d[1:]:
         last = merged[-1]
         if current.start <= last.end:
-            # Overlapping — extend the previous span, prioritize the most severe type
             last_prio = _get_priority(last.type, tier_config)
             curr_prio = _get_priority(current.type, tier_config)
-            # If priorities are equal, prefer local engines over HF
             if last_prio == curr_prio:
                 if last.engine != "hf" and current.engine == "hf":
                     winning_type, winning_subtype = last.type, last.subtype
@@ -96,11 +94,9 @@ def run(text: str, allowed_pii: List[str] = None, ignored_values: List[str] = No
     all_detections.extend(luhn_stage.detect(text))
     all_detections.extend(entropy_stage.detect(text))
     
-    # Custom Labels (Dictionary and Regex)
     import json
     import re
     for cl in custom_labels:
-        # Regex Matching
         if cl.regex_pattern:
             try:
                 for match in re.finditer(cl.regex_pattern, text):
@@ -114,7 +110,6 @@ def run(text: str, allowed_pii: List[str] = None, ignored_values: List[str] = No
                     ))
             except: pass
             
-        # Dictionary Matching
         if cl.dictionary_words:
             try:
                 words = json.loads(cl.dictionary_words)
@@ -137,70 +132,54 @@ def run(text: str, allowed_pii: List[str] = None, ignored_values: List[str] = No
                         start += len(w_lower)
             except: pass
     
-    # Determine GLiNER labels dynamically from our tier config
     if tier_config is None:
         from app.config import TIER_BLOCK, TIER_REDACT, TIER_AUDIT
         gliner_labels = list(TIER_BLOCK | TIER_REDACT | TIER_AUDIT)
     else:
         gliner_labels = list(set(tier_config.get("block", [])) | set(tier_config.get("redact", [])) | set(tier_config.get("audit", [])))
-    # We DO NOT add custom labels to GLiNER. Custom labels are strictly rule-based (Regex/Dictionary).
             
-    hf_space_url = os.getenv("HF_SPACE_URL")
-    if hf_space_url:
-        try:
-            url = hf_space_url.rstrip("/") + "/detect"
-            # We can optionally pass labels if the HF space supports it, but for now we just pass text
-            res = requests.post(url, json={"text": text}, timeout=15)
-            if res.status_code == 200:
-                data = res.json().get("detections", [])
-                for d in data:
-                    all_detections.append(
-                        Detection(
-                            start=d["start"],
-                            end=d["end"],
-                            type=d["type"],
-                            subtype=d["subtype"],
-                            confidence=d["confidence"],
-                            engine="hf"
-                        )
-                    )
-            else:
-                logger.error(f"HF API returned {res.status_code}: {res.text}")
-        except Exception as e:
-            logger.error(f"Failed to call HF Space: {e}")
+    from app.pipeline.semantic_stage import is_benign_context
+    use_semantic_filter = os.getenv("USE_SEMANTIC_FILTER", "True").lower() == "true"
+    
+    if use_semantic_filter and is_benign_context(text):
+        logger.info("Semantic filter matched benign context. Bypassing GLiNER.")
     else:
-        # Fallback to local GLiNER2 if installed
-        try:
-            from gliner2 import GLiNER2
-            
-            # Suppress GLiNER output that crashes Windows terminals with emojis
-            def _mock_print_config(self, config): pass
-            GLiNER2._print_config = _mock_print_config
-            
-            if not hasattr(run, "gliner_model"):
-                # We initialize with a CPU fallback if needed, but rely on default torch behavior
-                run.gliner_model = GLiNER2.from_pretrained("fastino/gliner2-privacy-filter-PII-multi")
-            
-            # gliner2 expects a dictionary of labels to descriptions. 
-            # If gliner_labels is a list, we'll just create a dummy dictionary
-            labels_dict = {l: l for l in gliner_labels} if isinstance(gliner_labels, list) else gliner_labels
-            
-            extracted = run.gliner_model.extract_entities(text, labels_dict, include_spans=True, include_confidence=True)
-            for label, items in extracted.get("entities", {}).items():
-                if not items: continue
-                for item in items:
-                    all_detections.append(
-                        Detection(
-                            start=item["start"],
-                            end=item["end"],
-                            type=label,
-                            subtype="gliner2",
-                            confidence="high" if item.get("confidence", 1.0) > 0.8 else "medium",
-                            engine="local_gliner2"
-                        )
-                    )
-        except Exception as e:
-            logger.error(f"Local GLiNER2 fallback failed: {e}")
+        hf_space_url = os.getenv("HF_SPACE_URL")
+        hf_success = False
+        if hf_space_url:
+            import time
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    url = hf_space_url.rstrip("/") + "/detect"
+                    res = requests.post(url, json={"text": text}, timeout=120)
+                    if res.status_code == 200:
+                        data = res.json().get("detections", [])
+                        for d in data:
+                            all_detections.append(
+                                Detection(
+                                    start=d["start"],
+                                    end=d["end"],
+                                    type=d["type"],
+                                    subtype=d["subtype"],
+                                    confidence=d["confidence"],
+                                    engine="hf"
+                                )
+                            )
+                        hf_success = True
+                        break
+                    elif res.status_code == 503:
+                        logger.warning(f"HF Space is likely waking up (503). Retrying in 10s... (Attempt {attempt+1}/{max_retries})")
+                        time.sleep(10)
+                    else:
+                        logger.error(f"HF API returned {res.status_code}: {res.text}")
+                        break
+                except Exception as e:
+                    logger.error(f"Failed to call HF Space (Attempt {attempt+1}/{max_retries}): {e}")
+                    time.sleep(5)
+                
+        if not hf_success:
+            logger.warning("HF API failed and local fallback is disabled by policy. Using regex/rules only.")
 
 
     merged = _merge_spans(all_detections, tier_config)
@@ -211,7 +190,6 @@ def run(text: str, allowed_pii: List[str] = None, ignored_values: List[str] = No
     else:
         block_set = tier_config.get("block", set())
 
-    # Filter out allowed PII, except for TIER_BLOCK items which are strictly locked
     filtered = []
     for d in merged:
         if d.type in block_set:
@@ -245,19 +223,14 @@ def run(text: str, allowed_pii: List[str] = None, ignored_values: List[str] = No
         primary_type = blocked_types[0] if blocked_types else "code"
         warning_msg = get_block_warning(primary_type)
         
-        # We handle the HTTP exception at the router level, but we could also raise here
-        # For clean architecture, we return the action and let main.py handle the response
         return "", filtered, "BLOCK"
 
     if action in ["REDACT", "AUDIT"]:
-        # Replace spans from right to left to preserve indices
         result = text
         for d in sorted(filtered, key=lambda x: x.start, reverse=True):
-            # Clean, anonymized label (e.g. "[PERSON]" instead of "[REDACTED:person]")
             clean_label = d.type.upper().replace(" ", "_")
             label = f"[{clean_label}]"
             result = result[: d.start] + label + result[d.end :]
         return result, filtered, action
 
-    # CLEAN passes the text through unchanged
     return text, filtered, action

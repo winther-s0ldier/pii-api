@@ -17,14 +17,12 @@ _SIGNATURES = [
 def detect(text: str) -> List[Detection]:
     detections: List[Detection] = []
     
-    # 1. Direct Markdown Fences (Always score as Code)
     for m in _FENCE_PATTERN.finditer(text):
         detections.append(Detection(
             start=m.start(), end=m.end(),
             type="code", subtype="markdown_fence", confidence="high"
         ))
 
-    # 2. Heuristic Density Scoring
     keyword_hits = []
     for sig in _SIGNATURES:
         for m in sig.finditer(text):

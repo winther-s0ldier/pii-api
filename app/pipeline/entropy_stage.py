@@ -23,7 +23,6 @@ def detect(text: str) -> List[Detection]:
     detections: List[Detection] = []
     for m in _TOKEN_RE.finditer(text):
         token = m.group()
-        # Strip common surrounding punctuation that inflates entropy
         stripped = token.strip("\"'`(),;:")
         if len(stripped) < _MIN_LENGTH:
             continue

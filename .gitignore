@@ -29,6 +29,9 @@ models/
 *.safetensors
 *.bin
 .cache/
-chat.db
+*.db
 *.db-shm
 *.db-wal
+
+# Data sets
+tests/data/

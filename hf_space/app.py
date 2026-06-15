@@ -37,11 +37,23 @@ if device == "cpu":
 print("Loading Presidio...")
 presidio_analyzer = AnalyzerEngine()
 
+print("Loading BAAI/bge-small-en-v1.5 for semantic embeddings...")
+try:
+    from sentence_transformers import SentenceTransformer
+    semantic_model = SentenceTransformer("BAAI/bge-small-en-v1.5")
+    semantic_model.to(device)
+except Exception as e:
+    logger.error(f"Failed to load semantic model: {e}")
+    semantic_model = None
+
 class DetectRequest(BaseModel):
     text: str
 
 class DetectResponse(BaseModel):
     detections: List[Dict[str, Any]]
+
+class EmbeddingsRequest(BaseModel):
+    inputs: List[str]
 
 LABELS = {
     "person": "First, last, or full names of people, including Indian names",
@@ -70,6 +82,19 @@ ENTITY_MAP = {
     "US_DRIVER_LICENSE": "US driver license", "US_ITIN": "US ITIN", 
     "US_PASSPORT": "US passport", "UK_NHS": "UK NHS number"
 }
+
+@app.post("/embeddings")
+async def get_embeddings(req: EmbeddingsRequest):
+    if not semantic_model:
+        return {"error": "Semantic model failed to load"}
+    
+    try:
+        # BAAI/bge-small-en-v1.5 produces list of vectors
+        embeddings = semantic_model.encode(req.inputs, normalize_embeddings=True)
+        return embeddings.tolist()
+    except Exception as e:
+        logger.error(f"Semantic embedding error: {e}")
+        return {"error": str(e)}
 
 @app.post("/detect", response_model=DetectResponse)
 async def detect(req: DetectRequest):

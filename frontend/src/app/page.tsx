@@ -3,12 +3,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Shield, Plus, PanelLeft, Send, CheckCircle2, ShieldAlert, X, ShieldBan, MessageSquare, Trash2, HatGlasses, Paperclip } from 'lucide-react';
+import { Shield, Plus, PanelLeft, Send, CheckCircle2, ShieldAlert, X, ShieldBan, MessageSquare, Trash2, HatGlasses, Paperclip, Eye, EyeOff } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { driver } from "driver.js";
 import "driver.js/dist/driver.css";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
 type RedactedType = {
   type: string;
@@ -50,15 +50,16 @@ export default function ChatPage() {
   const [loginPass, setLoginPass] = useState('');
   const [loginError, setLoginError] = useState('');
   const [keepLoggedIn, setKeepLoggedIn] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const [loadingIndex, setLoadingIndex] = useState(0);
+  const [stagedFile, setStagedFile] = useState<File | null>(null);
 
   const placeholders = [
     "How can I help you today?",
     "Paste a document to check for PII...",
-    "Analyze a customer complaint...",
-    "Write an email draft securely...",
-    "Check text for phone numbers..."
+    "What would you like to review?",
+    "Upload a file to get started..."
   ];
 
   const loadingStates = [
@@ -169,6 +170,12 @@ export default function ChatPage() {
       const res = await fetch(`${API_BASE_URL}/api/v1/sessions`, {
         headers: { 'Authorization': `Basic ${auth}` }
       });
+      if (res.status === 401) {
+        localStorage.removeItem('basic_auth');
+        localStorage.removeItem('basic_auth_expiry');
+        setIsAuthenticated(false);
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
         setSessions(data.sessions || []);
@@ -243,8 +250,20 @@ export default function ChatPage() {
     { value: 'US bank number', label: 'Bank Account' }
   ];
 
+  const isSendDisabled = isLoading || (input.trim().length === 0 && stagedFile === null);
+
   const handleSendMessage = async () => {
-    if (!input.trim() || isLoading) return;
+    if (isSendDisabled) return;
+
+    if (stagedFile) {
+        const file = stagedFile;
+        const msg = input.trim();
+        setStagedFile(null);
+        setInput('');
+        if (textareaRef.current) textareaRef.current.style.height = 'auto';
+        await uploadAndSendFile(file, msg);
+        return;
+    }
 
     const originalText = input.trim();
     setInput('');
@@ -327,13 +346,13 @@ export default function ChatPage() {
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    
-    // Clear the input immediately to allow re-uploading the same file
+    if (file) setStagedFile(file);
     e.target.value = '';
-    
+  };
+
+  const uploadAndSendFile = async (file: File, userMessage: string) => {
     setIsLoading(true);
     const previewId = crypto.randomUUID();
     
@@ -418,8 +437,11 @@ export default function ChatPage() {
           const docText = `[Document: ${file.name} (Part ${i + 1}/${chunks.length})]\n${chunks[i]}`;
           await executeLLM(docText, allowedPII);
         }
+        if (userMessage.trim()) {
+           await executeLLM(userMessage.trim(), allowedPII);
+        }
       } else {
-        const docText = `[Document: ${file.name}]\n${data.message}`;
+        const docText = `[Document: ${file.name}]\n${data.message}` + (userMessage.trim() ? `\n\n${userMessage.trim()}` : '');
         await executeLLM(docText, allowedPII);
       }
     } catch (err) {
@@ -603,19 +625,32 @@ export default function ChatPage() {
     }));
   };
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
-    if (loginUser === 'admin' && loginPass === 'password') {
-      const token = btoa(`${loginUser}:${loginPass}`);
+    
+    const token = btoa(`${loginUser}:${loginPass}`);
+    
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/sessions`, {
+        headers: { 'Authorization': `Basic ${token}` }
+      });
+      
+      if (!res.ok) {
+        throw new Error('Invalid credentials');
+      }
+      
       if (keepLoggedIn) {
         localStorage.setItem('basic_auth', token);
         localStorage.setItem('basic_auth_expiry', (Date.now() + 2 * 60 * 60 * 1000).toString());
       }
+      
       setAuthHeader(token);
       setIsAuthenticated(true);
-      loadSessions(token);
-    } else {
+      
+      const data = await res.json();
+      setSessions(data.sessions || []);
+    } catch (err) {
       setLoginError('Invalid username or password');
     }
   };
@@ -623,7 +658,7 @@ export default function ChatPage() {
 
   if (!isAuthenticated) {
     return (
-      <div className="flex items-center justify-center h-screen bg-[#FAF9F5] font-sans text-[#2A1F1A]">
+    <div className="flex items-center justify-center h-screen bg-[#FAF9F5] font-sans text-[#2A1F1A]">
         <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-sm border border-[#E0D9C8]">
           <div className="flex justify-center mb-6 text-primary">
             <img src="/logo-t.png" alt="ADOPSHUN AI Logo" className="h-12 w-auto object-contain" />
@@ -640,15 +675,22 @@ export default function ChatPage() {
                 className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-primary outline-none"
               />
             </div>
-            <div>
+            <div className="relative">
               <label className="block text-sm font-medium mb-1">Password</label>
               <input 
-                type="password" 
+                type={showPassword ? "text" : "password"} 
                 value={loginPass}
                 autoComplete="current-password"
                 onChange={e => setLoginPass(e.target.value)}
-                className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-primary outline-none"
+                className="w-full px-3 py-2 pr-10 border rounded focus:ring-2 focus:ring-primary outline-none"
               />
+              <button 
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-[30px] text-gray-400 hover:text-gray-600"
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
             </div>
             <div className="flex items-center space-x-2">
               <input
@@ -833,6 +875,20 @@ export default function ChatPage() {
 
                 {/* Centered Input Area */}
                 <div className="w-full max-w-3xl relative">
+                  {stagedFile && (
+                    <div className="flex items-center gap-3 bg-[#2A1F1A] text-white rounded-2xl px-3 py-2.5 w-fit mb-3 shadow-sm mx-auto">
+                      <div className="w-9 h-9 bg-[#0084ff] rounded-xl flex items-center justify-center shrink-0">
+                        <Paperclip size={18} className="text-white" />
+                      </div>
+                      <div className="flex flex-col pr-6">
+                        <span className="text-[14px] font-bold leading-tight">{stagedFile.name}</span>
+                        <span className="text-[12px] text-gray-300 leading-tight">Document</span>
+                      </div>
+                      <button onClick={() => setStagedFile(null)} className="absolute right-2 top-2 p-1 bg-white/20 hover:bg-white/30 rounded-full transition-colors flex items-center justify-center">
+                        <X size={12} strokeWidth={3} />
+                      </button>
+                    </div>
+                  )}
                   <div id="tour-chat-input" className="relative flex flex-row items-end w-full bg-white border border-[#E0D9C8] rounded-2xl shadow-sm focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/50 transition-all p-2 gap-2">
                     <input type="file" ref={emptyFileInputRef} onChange={(e) => { handleFileUpload(e); e.target.value = ''; }} className="hidden" />
                     <button 
@@ -855,7 +911,7 @@ export default function ChatPage() {
                     />
                     <button 
                       onClick={handleSendMessage}
-                      disabled={!input.trim() || isLoading}
+                      disabled={isSendDisabled}
                       className="p-2.5 bg-[#2A1F1A] hover:bg-black disabled:opacity-30 text-white rounded-xl flex items-center justify-center transition-all shrink-0"
                     >
                       <Send size={18} />
@@ -987,7 +1043,21 @@ export default function ChatPage() {
         {/* Bottom Input Area for Ongoing Chat */}
         {messages.length > 0 && (
           <div className="p-4 bg-gradient-to-t from-[#FAF9F5] via-[#FAF9F5] to-transparent pt-10">
-            <div className="max-w-3xl mx-auto relative">
+            <div className="max-w-3xl mx-auto relative flex flex-col items-center">
+              {stagedFile && (
+                <div className="flex items-center gap-3 bg-[#2A1F1A] text-white rounded-2xl px-3 py-2.5 w-fit mb-3 shadow-sm self-start ml-2 relative">
+                  <div className="w-9 h-9 bg-[#0084ff] rounded-xl flex items-center justify-center shrink-0">
+                    <Paperclip size={18} className="text-white" />
+                  </div>
+                  <div className="flex flex-col pr-6">
+                    <span className="text-[14px] font-bold leading-tight">{stagedFile.name}</span>
+                    <span className="text-[12px] text-gray-300 leading-tight">Document</span>
+                  </div>
+                  <button onClick={() => setStagedFile(null)} className="absolute right-2 top-2 p-1 bg-white/20 hover:bg-white/30 rounded-full transition-colors flex items-center justify-center">
+                    <X size={12} strokeWidth={3} />
+                  </button>
+                </div>
+              )}
               <div className="relative flex flex-row items-end w-full bg-white border border-[#E0D9C8] rounded-2xl shadow-sm focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/50 transition-all p-2 gap-2">
                 <input type="file" ref={bottomFileInputRef} onChange={handleFileUpload} className="hidden" />
                 <button 
@@ -1010,7 +1080,7 @@ export default function ChatPage() {
                 />
                 <button 
                   onClick={handleSendMessage}
-                  disabled={!input.trim() || isLoading}
+                  disabled={isSendDisabled}
                   className="p-2.5 bg-[#2A1F1A] hover:bg-black disabled:opacity-30 text-white rounded-xl flex items-center justify-center transition-all shrink-0"
                 >
                   <Send size={18} />
