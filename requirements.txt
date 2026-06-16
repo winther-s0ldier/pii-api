@@ -6,7 +6,7 @@ sqlalchemy
 slowapi
 requests
 python-multipart
-markitdown
+markitdown[all]
 gliner2
 openpyxl
 sentence-transformers
