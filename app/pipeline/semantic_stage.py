@@ -42,18 +42,9 @@ def get_embeddings(texts):
         except Exception as e:
             logger.error(f"HF Space embeddings failed: {e}. Falling back to local model.")
             
-    # Fallback to local
-    try:
-        from sentence_transformers import SentenceTransformer
-        if _local_model is None:
-            logger.info("Loading local BAAI/bge-small-en-v1.5 model...")
-            _local_model = SentenceTransformer("BAAI/bge-small-en-v1.5")
-        
-        embeddings = _local_model.encode(texts)
-        return np.array(embeddings)
-    except ImportError:
-        logger.error("sentence-transformers not installed. Cannot run local semantic embeddings.")
-        return None
+    # Fallback disabled for production to prevent memory limit crashes
+    logger.error("HF Space embeddings failed and local fallback is disabled. Returning None.")
+    return None
 
 def is_benign_context(text: str, threshold: float = 0.82) -> bool:
     global _anchor_embeddings
