@@ -716,10 +716,7 @@ export default function ChatPage() {
               <Plus size={16} /> New chat
             </button>
             <div className="mt-2 flex items-center gap-2 p-2">
-              <UserButton
-                appearance={{ elements: { userButtonPopoverActionButton__manageOrganization: { display: !orgId ? 'none' : undefined } } }}
-                afterSignOutUrl="/"
-              />
+              <UserButton appearance={{ elements: { userButtonPopoverActionButton__manageOrganization: { display: !orgId ? 'none' : undefined } } }} />
               <span className="text-sm font-medium">My Account</span>
             </div>
           </div>
