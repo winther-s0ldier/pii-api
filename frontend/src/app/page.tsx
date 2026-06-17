@@ -718,8 +718,6 @@ export default function ChatPage() {
             <div className="mt-2 flex items-center gap-2 p-2">
               <UserButton
                 appearance={{ elements: { userButtonPopoverActionButton__manageOrganization: { display: !orgId ? 'none' : undefined } } }}
-                organizationProfileMode={!orgId ? 'navigation' : undefined}
-                organizationProfileUrl={!orgId ? undefined : undefined}
                 afterSignOutUrl="/"
               />
               <span className="text-sm font-medium">My Account</span>
