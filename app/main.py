@@ -5,8 +5,11 @@ from sqlalchemy.orm import Session
 from typing import Optional
 from google import genai
 import os
+import logging
 from dotenv import load_dotenv
 load_dotenv(override=True)
+
+logger = logging.getLogger(__name__)
 
 from app.models import (
     CheckRequest, CheckResponse, BlockResponse, RedactedType,
@@ -16,7 +19,7 @@ from app.models import (
 from app.pipeline import pipeline
 from app.pipeline import regex_stage
 from app.config import get_block_warning, TIER_BLOCK, TIER_REDACT, TIER_AUDIT
-from app.models_db import init_db, get_db, Session as ChatSession, Message as ChatMessage, User, StatLog, CustomLabel, SessionLocal
+from app.models_db import init_db, get_db, Session as ChatSession, Message as ChatMessage, User, StatLog, CustomLabel, SessionLocal, Organization
 import json
 from collections import Counter
 from sqlalchemy import func
@@ -109,9 +112,7 @@ def verify_credentials(request: Request, bearer_creds: HTTPAuthorizationCredenti
                     db.refresh(user)
                 user.is_base_user = (clerk_org_id is None)
             except Exception as e:
-                print("Clerk JWT Decode Error:", e)
-                with open("clerk_error.log", "w") as f:
-                    f.write(str(e))
+                logger.error("Clerk JWT Decode Error: %s", e, exc_info=True)
                 raise HTTPException(status_code=401, detail=f"Invalid Clerk Token: {str(e)}")
                 
         if not user:
@@ -204,7 +205,8 @@ async def global_exception_handler(request: Request, exc: Exception):
     print("GLOBAL EXCEPTION:", err)
     response = JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
     origin = request.headers.get("origin")
-    if origin:
+    allowed_origins = set(os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(","))
+    if origin and origin in allowed_origins:
         response.headers["Access-Control-Allow-Origin"] = origin
     response.headers["Access-Control-Allow-Credentials"] = "true"
     response.headers["Access-Control-Allow-Methods"] = "*"
