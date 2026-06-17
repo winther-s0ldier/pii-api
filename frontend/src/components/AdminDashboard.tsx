@@ -1,4 +1,5 @@
 'use client';
+import { useAuth } from '@clerk/nextjs';
 
 import React, { useState, useEffect } from 'react';
 import { Shield, Users, Activity, Settings, Save, AlertCircle, Eye, EyeOff, Clock, List, MessageSquare, X } from 'lucide-react';
@@ -25,6 +26,7 @@ const TIME_WINDOWS = [
 type CustomLabel = { id: number; name: string; description: string; tier: string; created_at: string };
 
 export default function AdminDashboard() {
+  const { getToken, orgId, isLoaded } = useAuth();
   const [stats, setStats] = useState<StatsResponse | null>(null);
   const [userStats, setUserStats] = useState<StatsResponse | null>(null);
   const [configUserId, setConfigUserId] = useState('default_user');
@@ -42,7 +44,12 @@ export default function AdminDashboard() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [selectedLogMessage, setSelectedLogMessage] = useState<string | null>(null);
 
-  const backendAuth = typeof window !== 'undefined' ? localStorage.getItem('basic_auth') : null;
+  // ponytail: set configUserId dynamically based on role type
+  useEffect(() => {
+    if (isLoaded) {
+      setConfigUserId(!orgId ? 'me' : 'default_user');
+    }
+  }, [isLoaded, orgId]);
 
   // Auth is handled by the admin layout — mark as authenticated on mount
   useEffect(() => {
@@ -60,7 +67,7 @@ export default function AdminDashboard() {
       fetchConfig();
       fetchLogs();
     }
-  }, [userTimeWindow]);
+  }, [userTimeWindow, configUserId]);
 
   useEffect(() => {
     if (isAuthenticated && typeof window !== 'undefined') {
@@ -90,11 +97,10 @@ export default function AdminDashboard() {
   const fetchGlobalStats = async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/admin/stats${getTimeParams(globalTimeWindow)}`, {
-        headers: { 'Authorization': `Basic ${backendAuth}` }
+        headers: { 'Authorization': `Bearer ${await getToken()}` }
       });
       if (res.status === 401) {
-        localStorage.removeItem('basic_auth');
-        window.location.href = '/admin/login';
+        window.location.href = "/";
         return;
       }
       if (res.ok) setStats(await res.json());
@@ -106,7 +112,7 @@ export default function AdminDashboard() {
   const fetchCustomLabels = async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/admin/custom_labels`, {
-        headers: { 'Authorization': `Basic ${backendAuth}` }
+        headers: { 'Authorization': `Bearer ${await getToken()}` }
       });
       if (res.ok) setCustomLabels(await res.json());
     } catch (e) {
@@ -126,7 +132,7 @@ export default function AdminDashboard() {
       const res = await fetch(`${API_BASE_URL}/api/v1/admin/custom_labels`, {
         method: 'POST',
         headers: { 
-          'Authorization': `Basic ${backendAuth}`,
+          'Authorization': `Bearer ${await getToken()}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(payload)
@@ -146,7 +152,7 @@ export default function AdminDashboard() {
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/admin/custom_labels/${id}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Basic ${backendAuth}` }
+        headers: { 'Authorization': `Bearer ${await getToken()}` }
       });
       if (res.ok) fetchCustomLabels();
     } catch (e) {
@@ -157,7 +163,7 @@ export default function AdminDashboard() {
   const fetchUserStats = async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/admin/stats/${configUserId}${getTimeParams(userTimeWindow)}`, {
-        headers: { 'Authorization': `Basic ${backendAuth}` }
+        headers: { 'Authorization': `Bearer ${await getToken()}` }
       });
       if (res.ok) setUserStats(await res.json());
     } catch (e) {
@@ -168,7 +174,7 @@ export default function AdminDashboard() {
   const fetchConfig = async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/admin/config/${configUserId}`, {
-        headers: { 'Authorization': `Basic ${backendAuth}` }
+        headers: { 'Authorization': `Bearer ${await getToken()}` }
       });
       if (res.ok) setUserConfig(await res.json());
     } catch (e) {
@@ -179,7 +185,7 @@ export default function AdminDashboard() {
   const fetchLogs = async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/admin/logs/${configUserId}?limit=50`, {
-        headers: { 'Authorization': `Basic ${backendAuth}` }
+        headers: { 'Authorization': `Bearer ${await getToken()}` }
       });
       if (res.ok) setUserLogs(await res.json());
     } catch (e) {
@@ -219,7 +225,9 @@ export default function AdminDashboard() {
         {/* Global Stats Section */}
         <section className="bg-white rounded-xl p-6 shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-[#EAEAEA]">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
-            <h2 className="text-lg font-semibold flex items-center gap-2"><Activity size={18} /> Global Security Statistics</h2>
+            <h2 className="text-lg font-semibold flex items-center gap-2">
+              <Activity size={18} /> {!orgId ? 'Security Statistics' : 'Global Security Statistics'}
+            </h2>
             <div className="flex items-center gap-2 mt-4 md:mt-0 bg-[#FAFAFA] p-1.5 rounded-lg border border-[#EAEAEA]">
               <Clock size={14} className="text-[#888888] ml-2" />
               <select 
@@ -295,66 +303,72 @@ export default function AdminDashboard() {
         {/* User Search & Profile Section */}
         <section className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-[#EAEAEA] overflow-hidden">
           <div className="bg-white p-6 border-b border-[#EAEAEA]">
-            <h2 className="text-lg font-semibold flex items-center gap-2 mb-4"><Users size={18} /> User Profile & Tiers</h2>
-            <div className="flex flex-col md:flex-row gap-3">
-              <input 
-                type="text" 
-                value={configUserId} 
-                onChange={e => setConfigUserId(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleSearchUser()}
-                className="px-3 py-2 text-[14px] bg-[#FAFAFA] border border-[#EAEAEA] rounded-md focus:bg-white focus:border-[#999] focus:ring-0 outline-none transition-all placeholder:text-[#BBBBBB] w-full md:w-64"
-                placeholder="Enter User ID (e.g. default_user)"
-              />
-              <button 
-                onClick={handleSearchUser}
-                className="px-5 py-2 bg-[#111111] text-white text-[14px] font-medium rounded-md hover:bg-[#333333] transition-colors"
-              >
-                Search User
-              </button>
-            </div>
+            <h2 className="text-lg font-semibold flex items-center gap-2 mb-4">
+              <Users size={18} /> {!orgId ? 'Recent Access Logs' : 'User Profile & Tiers'}
+            </h2>
+            {orgId && (
+              <div className="flex flex-col md:flex-row gap-3">
+                <input 
+                  type="text" 
+                  value={configUserId} 
+                  onChange={e => setConfigUserId(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleSearchUser()}
+                  className="px-3 py-2 text-[14px] bg-[#FAFAFA] border border-[#EAEAEA] rounded-md focus:bg-white focus:border-[#999] focus:ring-0 outline-none transition-all placeholder:text-[#BBBBBB] w-full md:w-64"
+                  placeholder="Enter User ID (e.g. default_user)"
+                />
+                <button 
+                  onClick={handleSearchUser}
+                  className="px-5 py-2 bg-[#111111] text-white text-[14px] font-medium rounded-md hover:bg-[#333333] transition-colors"
+                >
+                  Search User
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="p-6">
-            {/* User Specific Stats */}
-            {userStats ? (
-              <div className="mb-8">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-[15px] font-semibold text-[#111111]">User Activity Summary</h3>
-                  <div className="bg-[#FAFAFA] p-1 rounded-md border border-[#EAEAEA]">
-                    <select 
-                      className="bg-transparent text-[13px] font-medium outline-none px-2 text-[#111111] cursor-pointer"
-                      value={userTimeWindow}
-                      onChange={e => setUserTimeWindow(Number(e.target.value))}
-                    >
-                      {TIME_WINDOWS.map(w => <option key={`user_${w.label}`} value={w.hours}>{w.label}</option>)}
-                    </select>
-                  </div>
-                </div>
-                <div className="flex gap-4 overflow-x-auto pb-2">
-                  <div className="min-w-[120px] bg-[#FAFAFA] border border-[#EAEAEA] p-3 rounded-lg">
-                    <p className="text-[11px] text-[#888888] font-semibold uppercase tracking-wider mb-1">Requests</p>
-                    <p className="text-2xl font-semibold tracking-tight">{userStats.total_requests}</p>
-                  </div>
-                  {userStats.actions.map(a => (
-                    <div key={a.name} className={`min-w-[120px] p-3 rounded-lg border ${a.name === 'BLOCK' ? 'bg-red-50/50 border-red-100' : a.name === 'REDACT' ? 'bg-amber-50/50 border-amber-100' : 'bg-green-50/50 border-green-100'}`}>
-                      <p className={`text-[11px] font-semibold uppercase tracking-wider mb-1 ${a.name === 'BLOCK' ? 'text-red-700' : a.name === 'REDACT' ? 'text-amber-700' : 'text-green-700'}`}>{a.name}</p>
-                      <p className="text-2xl font-semibold tracking-tight text-[#111111]">{a.count}</p>
+            {/* User Specific Stats (Only for Org view since base user stats are already shown in Global Stats) */}
+            {orgId && (
+              userStats ? (
+                <div className="mb-8">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-[15px] font-semibold text-[#111111]">User Activity Summary</h3>
+                    <div className="bg-[#FAFAFA] p-1 rounded-md border border-[#EAEAEA]">
+                      <select 
+                        className="bg-transparent text-[13px] font-medium outline-none px-2 text-[#111111] cursor-pointer"
+                        value={userTimeWindow}
+                        onChange={e => setUserTimeWindow(Number(e.target.value))}
+                      >
+                        {TIME_WINDOWS.map(w => <option key={`user_${w.label}`} value={w.hours}>{w.label}</option>)}
+                      </select>
                     </div>
-                  ))}
+                  </div>
+                  <div className="flex gap-4 overflow-x-auto pb-2">
+                    <div className="min-w-[120px] bg-[#FAFAFA] border border-[#EAEAEA] p-3 rounded-lg">
+                      <p className="text-[11px] text-[#888888] font-semibold uppercase tracking-wider mb-1">Requests</p>
+                      <p className="text-2xl font-semibold tracking-tight">{userStats.total_requests}</p>
+                    </div>
+                    {userStats.actions.map(a => (
+                      <div key={a.name} className={`min-w-[120px] p-3 rounded-lg border ${a.name === 'BLOCK' ? 'bg-red-50/50 border-red-100' : a.name === 'REDACT' ? 'bg-amber-50/50 border-amber-100' : 'bg-green-50/50 border-green-100'}`}>
+                        <p className={`text-[11px] font-semibold uppercase tracking-wider mb-1 ${a.name === 'BLOCK' ? 'text-red-700' : a.name === 'REDACT' ? 'text-amber-700' : 'text-green-700'}`}>{a.name}</p>
+                        <p className="text-2xl font-semibold tracking-tight text-[#111111]">{a.count}</p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <div className="mb-8 animate-pulse">
-                <div className="flex justify-between items-center mb-4">
-                  <div className="h-5 bg-[#F5F5F5] rounded w-48"></div>
-                  <div className="h-8 bg-[#F5F5F5] rounded w-32"></div>
+              ) : (
+                <div className="mb-8 animate-pulse">
+                  <div className="flex justify-between items-center mb-4">
+                    <div className="h-5 bg-[#F5F5F5] rounded w-48"></div>
+                    <div className="h-8 bg-[#F5F5F5] rounded w-32"></div>
+                  </div>
+                  <div className="flex gap-4 overflow-x-auto pb-2">
+                    <div className="min-w-[120px] bg-[#F5F5F5] border border-[#EAEAEA] rounded-lg h-20"></div>
+                    <div className="min-w-[120px] bg-[#F5F5F5] border border-[#EAEAEA] rounded-lg h-20"></div>
+                    <div className="min-w-[120px] bg-[#F5F5F5] border border-[#EAEAEA] rounded-lg h-20"></div>
+                  </div>
                 </div>
-                <div className="flex gap-4 overflow-x-auto pb-2">
-                  <div className="min-w-[120px] bg-[#F5F5F5] border border-[#EAEAEA] rounded-lg h-20"></div>
-                  <div className="min-w-[120px] bg-[#F5F5F5] border border-[#EAEAEA] rounded-lg h-20"></div>
-                  <div className="min-w-[120px] bg-[#F5F5F5] border border-[#EAEAEA] rounded-lg h-20"></div>
-                </div>
-              </div>
+              )
             )}
 
 

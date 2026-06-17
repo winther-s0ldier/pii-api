@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Poppins } from "next/font/google";
+import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 
 const inter = Inter({
@@ -27,11 +28,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      className={`${inter.variable} ${poppins.variable} h-full antialiased font-sans`}
-    >
-      <body className="min-h-full flex flex-col font-sans" suppressHydrationWarning>{children}</body>
-    </html>
+    <ClerkProvider>
+      <html
+        lang="en"
+        className={`${inter.variable} ${poppins.variable} h-full antialiased font-sans`}
+        suppressHydrationWarning
+      >
+        <body className="min-h-full flex flex-col font-sans" suppressHydrationWarning>{children}</body>
+      </html>
+    </ClerkProvider>
   );
 }

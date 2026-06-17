@@ -1,4 +1,5 @@
 'use client';
+import { useAuth } from '@clerk/nextjs';
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Tag, AlertCircle, Save, Users, ChevronDown, ChevronUp, Download, Upload, X } from 'lucide-react';
@@ -28,7 +29,7 @@ interface PreviewItem {
 }
 
 export default function LabelsManager() {
-  const backendAuth = typeof window !== 'undefined' ? localStorage.getItem('basic_auth') : null;
+  const { getToken, orgId, isLoaded } = useAuth();
   const [configUserId, setConfigUserId] = useState('default_user');
   const [userConfig, setUserConfig] = useState<UserConfigResponse | null>(null);
   const [customLabels, setCustomLabels] = useState<CustomLabelResponse[]>([]);
@@ -49,11 +50,10 @@ export default function LabelsManager() {
   const fetchConfig = async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/admin/config/${configUserId}`, {
-        headers: { 'Authorization': `Basic ${backendAuth}` }
+        headers: { 'Authorization': `Bearer ${await getToken()}` }
       });
       if (res.status === 401) {
-        localStorage.removeItem('basic_auth');
-        window.location.href = '/admin/login';
+        window.location.href = "/";
         return;
       }
       if (res.ok) {
@@ -71,7 +71,7 @@ export default function LabelsManager() {
   const fetchCustomLabels = async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/admin/custom_labels`, {
-        headers: { 'Authorization': `Basic ${backendAuth}` }
+        headers: { 'Authorization': `Bearer ${await getToken()}` }
       });
       if (res.ok) setCustomLabels(await res.json());
     } catch (e) {
@@ -79,10 +79,19 @@ export default function LabelsManager() {
     }
   };
 
+  // ponytail: set configUserId dynamically based on role type
   useEffect(() => {
-    fetchConfig();
-    fetchCustomLabels();
-  }, []);
+    if (isLoaded) {
+      setConfigUserId(!orgId ? 'me' : 'default_user');
+    }
+  }, [isLoaded, orgId]);
+
+  useEffect(() => {
+    if (configUserId) {
+      fetchConfig();
+      fetchCustomLabels();
+    }
+  }, [configUserId]);
 
   const handleSearchUser = () => {
     fetchConfig();
@@ -95,7 +104,7 @@ export default function LabelsManager() {
       await fetch(`${API_BASE_URL}/api/v1/admin/config/${userConfig.user_id}`, {
         method: 'POST',
         headers: { 
-          'Authorization': `Basic ${backendAuth}`,
+          'Authorization': `Bearer ${await getToken()}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
@@ -118,7 +127,7 @@ export default function LabelsManager() {
       const res = await fetch(`${API_BASE_URL}/api/v1/admin/custom_labels`, {
         method: 'POST',
         headers: { 
-          'Authorization': `Basic ${backendAuth}`,
+          'Authorization': `Bearer ${await getToken()}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
@@ -153,7 +162,7 @@ export default function LabelsManager() {
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/admin/custom_labels/${label.id}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Basic ${backendAuth}` }
+        headers: { 'Authorization': `Bearer ${await getToken()}` }
       });
       if (res.ok) {
         fetchCustomLabels();
@@ -169,7 +178,7 @@ export default function LabelsManager() {
   const handleExportXLSX = async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/admin/custom_labels/xlsx`, {
-        headers: { 'Authorization': `Basic ${backendAuth}` }
+        headers: { 'Authorization': `Bearer ${await getToken()}` }
       });
       if (res.ok) {
         const blob = await res.blob();
@@ -198,7 +207,7 @@ export default function LabelsManager() {
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/admin/custom_labels/import/preview`, {
         method: 'POST',
-        headers: { 'Authorization': `Basic ${backendAuth}` },
+        headers: { 'Authorization': `Bearer ${await getToken()}` },
         body: formData
       });
       if (res.ok) {
@@ -224,7 +233,7 @@ export default function LabelsManager() {
       const res = await fetch(`${API_BASE_URL}/api/v1/admin/custom_labels/import/confirm`, {
         method: 'POST',
         headers: { 
-          'Authorization': `Basic ${backendAuth}`,
+          'Authorization': `Bearer ${await getToken()}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ items: previewItems })
@@ -341,25 +350,27 @@ export default function LabelsManager() {
           <div>
             <h2 className="text-lg font-semibold flex items-center gap-2"><Users size={18} /> Redaction Tiers</h2>
             <p className="text-[13px] text-[#888888] mt-1.5 flex items-center gap-1.5">
-              <AlertCircle size={14} /> Drag and drop labels to customize protection rules for <b className="text-[#111111]">{configUserId}</b>.
+              <AlertCircle size={14} /> {!orgId ? 'Drag and drop labels to customize protection rules for your account.' : <>Drag and drop labels to customize protection rules for <b className="text-[#111111]">{configUserId}</b>.</>}
             </p>
           </div>
-          <div className="flex gap-2">
-            <input 
-              type="text" 
-              value={configUserId} 
-              onChange={e => setConfigUserId(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleSearchUser()}
-              className="px-3 py-1.5 text-[13px] bg-[#FAFAFA] border border-[#EAEAEA] rounded-md focus:bg-white focus:border-[#999] focus:ring-0 outline-none transition-all placeholder:text-[#BBBBBB]"
-              placeholder="User ID"
-            />
-            <button 
-              onClick={handleSearchUser}
-              className="px-3 py-1.5 bg-[#FAFAFA] border border-[#EAEAEA] text-[#444444] text-[13px] font-medium rounded-md hover:bg-[#F5F5F5] transition-colors"
-            >
-              Load User
-            </button>
-          </div>
+          {orgId && (
+            <div className="flex gap-2">
+              <input 
+                type="text" 
+                value={configUserId} 
+                onChange={e => setConfigUserId(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSearchUser()}
+                className="px-3 py-1.5 text-[13px] bg-[#FAFAFA] border border-[#EAEAEA] rounded-md focus:bg-white focus:border-[#999] focus:ring-0 outline-none transition-all placeholder:text-[#BBBBBB]"
+                placeholder="User ID"
+              />
+              <button 
+                onClick={handleSearchUser}
+                className="px-3 py-1.5 bg-[#FAFAFA] border border-[#EAEAEA] text-[#444444] text-[13px] font-medium rounded-md hover:bg-[#F5F5F5] transition-colors"
+              >
+                Load User
+              </button>
+            </div>
+          )}
         </div>
 
         {displayConfig ? (

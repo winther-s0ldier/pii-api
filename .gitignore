@@ -8,6 +8,8 @@ venv/
 .venv/
 env/
 .env
+.env.local
+.env.*.local
 
 # Testing
 .pytest_cache/
@@ -35,3 +37,20 @@ models/
 
 # Data sets
 tests/data/
+
+# Logs
+*.log
+clerk_error.log
+
+# Temporary migration / fix scripts (dev only)
+fix.py
+patch_uuid.py
+final_migrate.py
+update_admin_layout.py
+update_admin_layout_rbac.py
+update_main.py
+seed_enterprise.py
+
+# SQLite (prod uses Postgres via DATABASE_URL)
+db.sqlite
+pi-api.db

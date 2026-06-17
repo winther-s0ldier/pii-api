@@ -80,6 +80,12 @@ def run(text: str, allowed_pii: List[str] = None, ignored_values: List[str] = No
     Run all stages in sequence.
     Returns (processed_text, list_of_detections, action_tier).
     """
+    import string
+    clean_text = text.strip().lower().translate(str.maketrans('', '', string.punctuation))
+    fast_bypass_words = {"hi", "hello", "hey", "sup", "howdy", "greetings", "good morning", "good afternoon", "good evening", "ok", "okay", "yes", "no", "thanks", "thank you", "bye", "goodbye", "ping"}
+    if clean_text in fast_bypass_words:
+        return text, [], "CLEAN"
+
     if allowed_pii is None:
         allowed_pii = []
     if ignored_values is None:
@@ -204,7 +210,7 @@ def run(text: str, allowed_pii: List[str] = None, ignored_values: List[str] = No
             
         if d.type in ["person", "organization", "ORG"]:
             context_window = text[max(0, d.start - 30):d.end + 30].lower()
-            greetings = ["hi ", "hello ", "hey ", "my name is", "i am ", "i'm ", "this is ", "call me "]
+            greetings = ["hi", "hello", "hey", "my name is", "i am", "i'm", "this is", "call me"]
             if any(g in context_window for g in greetings):
                 continue
                 

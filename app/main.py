@@ -16,7 +16,7 @@ from app.models import (
 from app.pipeline import pipeline
 from app.pipeline import regex_stage
 from app.config import get_block_warning, TIER_BLOCK, TIER_REDACT, TIER_AUDIT
-from app.db import init_db, get_db, ChatSession, ChatMessage, UserConfig, StatLog, CustomLabel
+from app.models_db import init_db, get_db, Session as ChatSession, Message as ChatMessage, User, StatLog, CustomLabel, SessionLocal
 import json
 from collections import Counter
 from sqlalchemy import func
@@ -31,28 +31,110 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from fastapi import Request
 import asyncio
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import secrets
+import jwt
+from jwt import PyJWKClient
 
-security = HTTPBasic()
+security_bearer = HTTPBearer(auto_error=False)
 
-def verify_credentials(request: Request, credentials: HTTPBasicCredentials = Depends(security)):
-    if request.url.path.startswith("/api/v1/admin"):
-        expected_username = os.environ.get("API_ADMIN_USERNAME", "admin@email.com")
-        expected_password = os.environ.get("API_ADMIN_PASSWORD", "accesstoken")
-    else:
-        expected_username = os.environ.get("API_USER_USERNAME", "user@email.com")
-        expected_password = os.environ.get("API_USER_PASSWORD", "accesstoken")
-        
-    correct_username = secrets.compare_digest(credentials.username, expected_username)
-    correct_password = secrets.compare_digest(credentials.password, expected_password)
-    if not (correct_username and correct_password):
-        raise HTTPException(
-            status_code=401,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Basic"},
-        )
-    return credentials
+
+CLERK_JWKS_URL = os.getenv("CLERK_JWKS_URL", "https://rapid-hyena-22.clerk.accounts.dev/.well-known/jwks.json")
+try:
+    jwks_client = PyJWKClient(CLERK_JWKS_URL)
+except:
+    jwks_client = None
+
+
+def verify_credentials(request: Request, bearer_creds: HTTPAuthorizationCredentials = Depends(security_bearer)):
+    from app.models_db import Organization, User
+    db = SessionLocal()
+    try:
+        user = None
+
+        # Clerk JWT validation
+        global jwks_client
+        if not jwks_client:
+            try:
+                jwks_client = PyJWKClient(CLERK_JWKS_URL)
+            except Exception as e:
+                print("Failed to initialize JWKS client:", e)
+
+
+        if not user and bearer_creds and jwks_client:
+            token = bearer_creds.credentials
+            try:
+                signing_key = jwks_client.get_signing_key_from_jwt(token)
+                data = jwt.decode(
+                    token,
+                    signing_key.key,
+                    algorithms=["RS256"],
+                    options={"verify_aud": False},
+                    leeway=600
+                )
+                import uuid
+                clerk_id = data.get("sub")
+                clerk_org_id = data.get("org_id")
+                
+                if clerk_org_id:
+                    # Deterministic UUID5 for zero-schema organization syncing
+                    CLERK_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_DNS, 'clerk.adopshun.com')
+                    org_uuid = uuid.uuid5(CLERK_NAMESPACE, clerk_org_id)
+                    org = db.query(Organization).filter(Organization.id == org_uuid).first()
+                    if not org:
+                        org_slug = data.get("org_slug", "Unknown Organization")
+                        org = Organization(
+                            id=org_uuid,
+                            name=org_slug.replace("-", " ").title() if org_slug else "New Organization",
+                            is_active=True
+                        )
+                        db.add(org)
+                        db.flush()
+                else:
+                    # Fallback if the user hasn't selected an organization in Clerk
+                    org = db.query(Organization).first()
+
+                user = db.query(User).filter(User.email == clerk_id).first()
+                if not user:
+                    user = User(
+                        org_id=org.id if org else None,
+                        email=clerk_id,
+                        role="admin" if data.get("org_role") == "org:admin" or not clerk_org_id else "employee",
+                        password_hash="clerk_managed",
+                        is_active=True,
+                        rate_limit_per_day=15 if not clerk_org_id else None
+                    )
+                    db.add(user)
+                    db.commit()
+                    db.refresh(user)
+                user.is_base_user = (clerk_org_id is None)
+            except Exception as e:
+                print("Clerk JWT Decode Error:", e)
+                with open("clerk_error.log", "w") as f:
+                    f.write(str(e))
+                raise HTTPException(status_code=401, detail=f"Invalid Clerk Token: {str(e)}")
+                
+        if not user:
+            print("Auth Failed: User not found or bearer token missing.")
+            if not bearer_creds:
+                print("- No Bearer token provided in headers")
+            raise HTTPException(
+                status_code=401,
+                detail="Not authenticated",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+            
+        request.state.is_base_user = getattr(user, 'is_base_user', True)
+            
+        if request.url.path.startswith("/api/v1/admin") and user.role not in ["admin", "super_admin"]:
+            raise HTTPException(
+                status_code=403,
+                detail="Admin privileges required"
+            )
+        request.state.current_user = user
+        return True
+    finally:
+        db.close()
 
 limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(
@@ -64,7 +146,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows requests from any origin (e.g., Next.js dev server or Vercel)
+    allow_origins=os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(","),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -72,13 +154,37 @@ app.add_middleware(
 
 init_db()
 
-def get_tier_config_helper(db, user_id):
-    user_config = db.query(UserConfig).filter(UserConfig.user_id == user_id).first()
-    custom_labels = db.query(CustomLabel).all()
-    if user_config:
-        tier_config = {"block": set(json.loads(user_config.tier_block)), "redact": set(json.loads(user_config.tier_redact)), "audit": set(json.loads(user_config.tier_audit))}
+def get_tier_config_helper(db, user):
+    is_base = getattr(user, "is_base_user", True)
+    if user:
+        if is_base:
+            custom_labels = db.query(CustomLabel).filter(CustomLabel.user_id == user.id).all()
+        else:
+            custom_labels = db.query(CustomLabel).filter(CustomLabel.org_id == user.org_id).all()
     else:
+        custom_labels = []
+        
+    if user and user.tier_block:
+        tier_config = {"block": set(user.tier_block), "redact": set(user.tier_redact), "audit": set(user.tier_audit)}
+    else:
+        if user and not is_base:
+            org = db.query(Organization).filter(Organization.id == user.org_id).first()
+            if org and org.default_tier_block:
+                tier_config = {
+                    "block": set(org.default_tier_block),
+                    "redact": set(org.default_tier_redact),
+                    "audit": set(org.default_tier_audit)
+                }
+                for cl in custom_labels:
+                    if cl.tier == "tier_block":
+                        tier_config["block"].add(cl.name)
+                    elif cl.tier == "tier_redact":
+                        tier_config["redact"].add(cl.name)
+                    elif cl.tier == "tier_audit":
+                        tier_config["audit"].add(cl.name)
+                return tier_config, custom_labels
         tier_config = {"block": set(TIER_BLOCK), "redact": set(TIER_REDACT), "audit": set(TIER_AUDIT)}
+        
     for cl in custom_labels:
         if cl.tier == "tier_block":
             tier_config["block"].add(cl.name)
@@ -96,7 +202,14 @@ async def global_exception_handler(request: Request, exc: Exception):
     import traceback
     err = traceback.format_exc()
     print("GLOBAL EXCEPTION:", err)
-    return JSONResponse(status_code=500, content={"detail": str(exc), "traceback": err})
+    response = JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
+    origin = request.headers.get("origin")
+    if origin:
+        response.headers["Access-Control-Allow-Origin"] = origin
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    response.headers["Access-Control-Allow-Methods"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    return response
 
 @app.get("/")
 def read_root():
@@ -104,17 +217,25 @@ def read_root():
 
 @app.post("/api/v1/check")
 @limiter.limit("20/minute")
-async def check_message(request: Request, body: CheckRequest, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
-    tier_config, custom_labels = get_tier_config_helper(db, body.user_id)
+async def check_message(request: Request, body: CheckRequest, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
+    user = request.state.current_user
+    tier_config, custom_labels = get_tier_config_helper(db, user)
     # 1. Async Pipeline Check
     processed_text, detections, action = await asyncio.to_thread(pipeline.run, body.message, body.allowed_pii, body.ignored_values, tier_config, custom_labels)
     
+    import uuid
+    try:
+        real_sess_id = uuid.UUID(body.session_id)
+    except:
+        real_sess_id = None
+
     # Log stat
     detected_types_list = [d.type for d in detections]
     flagged_sequences_list = [body.message[d.start:d.end] for d in detections]
     stat_log = StatLog(
-        user_id=body.user_id,
-        session_id=body.session_id,
+        user_id=user.id,
+        org_id=user.org_id,
+        session_id=real_sess_id,
         action=action,
         detected_types=json.dumps(detected_types_list),
         flagged_sequences=json.dumps(flagged_sequences_list),
@@ -139,15 +260,15 @@ async def check_message(request: Request, body: CheckRequest, db: Session = Depe
         primary_type = blocked_types[0] if blocked_types else "code"
 
         # Persist blocked message so it survives session restore
-        _session_id = body.session_id
-        db_sess = db.query(ChatSession).filter(ChatSession.id == _session_id).first()
-        if not db_sess:
-            _title = body.message[:30] + "..." if len(body.message) > 30 else body.message
-            db_sess = ChatSession(id=_session_id, user_id=body.user_id, title=_title)
-            db.add(db_sess)
-        blocked_msg = ChatMessage(session_id=_session_id, role="blocked", content=body.message)
-        db.add(blocked_msg)
-        db.commit()
+        if real_sess_id:
+            db_sess = db.query(ChatSession).filter(ChatSession.id == real_sess_id).first()
+            if not db_sess:
+                _title = body.message[:30] + "..." if len(body.message) > 30 else body.message
+                db_sess = ChatSession(id=real_sess_id, user_id=user.id, org_id=user.org_id, title=_title)
+                db.add(db_sess)
+            blocked_msg = ChatMessage(session_id=real_sess_id, role="blocked", content=body.message)
+            db.add(blocked_msg)
+            db.commit()
         
         blocked_redacted_types = [rt for rt in redacted_types_dicts if rt["type"] in block_set]
 
@@ -161,22 +282,22 @@ async def check_message(request: Request, body: CheckRequest, db: Session = Depe
         )
 
     # 2. Database & LLM Integration
-    session_id = body.session_id
-    db_session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
-    if not db_session:
-        title = body.message[:30] + "..." if len(body.message) > 30 else body.message
-        db_session = ChatSession(id=session_id, user_id=body.user_id, title=title)
-        db.add(db_session)
-        db.commit()
+    if real_sess_id:
+        db_session = db.query(ChatSession).filter(ChatSession.id == real_sess_id).first()
+        if not db_session:
+            title = body.message[:30] + "..." if len(body.message) > 30 else body.message
+            db_session = ChatSession(id=real_sess_id, user_id=user.id, org_id=user.org_id, title=title)
+            db.add(db_session)
+            db.commit()
 
-    user_msg = ChatMessage(
-        session_id=session_id, 
-        role="user", 
-        content=processed_text,
-        redacted_types=json.dumps(redacted_types_dicts)
-    )
-    db.add(user_msg)
-    db.commit()
+        user_msg = ChatMessage(
+            session_id=real_sess_id, 
+            role="user", 
+            content=processed_text,
+            redacted_types=json.dumps(redacted_types_dicts)
+        )
+        db.add(user_msg)
+        db.commit()
 
     async def generate():
         # First chunk: Metadata
@@ -190,8 +311,8 @@ async def check_message(request: Request, body: CheckRequest, db: Session = Depe
 
         llm_reply = ""
         api_key = os.getenv("GEMINI_API_KEY", "").strip('"').strip("'")
-        if api_key:
-            history = db.query(ChatMessage).filter(ChatMessage.session_id == session_id).order_by(ChatMessage.created_at).all()
+        if api_key and real_sess_id:
+            history = db.query(ChatMessage).filter(ChatMessage.session_id == real_sess_id).order_by(ChatMessage.created_at).all()
             gemini_history = []
             for msg in history[:-1]:
                 gemini_history.append({"role": msg.role, "parts": [{"text": msg.content}]})
@@ -224,10 +345,11 @@ async def check_message(request: Request, body: CheckRequest, db: Session = Depe
                     if chunk.text:
                         llm_reply += chunk.text
                         yield f"data: {json.dumps({'type': 'chunk', 'text': chunk.text})}\n\n"
-                        
-                model_msg = ChatMessage(session_id=session_id, role="model", content=llm_reply)
-                db.add(model_msg)
-                db.commit()
+                
+                if real_sess_id:
+                    model_msg = ChatMessage(session_id=real_sess_id, role="model", content=llm_reply)
+                    db.add(model_msg)
+                    db.commit()
             except Exception as e:
                 yield f"data: {json.dumps({'type': 'error', 'text': f'Error calling Gemini: {str(e)}'})}\n\n"
         else:
@@ -243,15 +365,23 @@ from app.models import BatchCheckRequest, BatchCheckResponse, CheckResult, Block
 
 @app.post("/api/v1/preview", response_model=Union[CheckResult, BlockResult])
 @limiter.limit("30/minute")
-async def preview_message(request: Request, body: CheckRequest, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
-    tier_config, custom_labels = get_tier_config_helper(db, body.user_id)
+async def preview_message(request: Request, body: CheckRequest, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
+    user = request.state.current_user
+    tier_config, custom_labels = get_tier_config_helper(db, user)
     processed_text, detections, action = await asyncio.to_thread(pipeline.run, body.message, body.allowed_pii, body.ignored_values, tier_config, custom_labels)
         
+    import uuid
+    try:
+        real_sess_id = uuid.UUID(body.session_id)
+    except:
+        real_sess_id = None
+
     detected_types_list = [d.type for d in detections]
     flagged_sequences_list = [body.message[d.start:d.end] for d in detections]
     stat_log = StatLog(
-        user_id=body.user_id,
-        session_id=body.session_id,
+        user_id=user.id,
+        org_id=user.org_id,
+        session_id=real_sess_id,
         action=action,
         detected_types=json.dumps(detected_types_list),
         flagged_sequences=json.dumps(flagged_sequences_list)
@@ -284,14 +414,14 @@ async def preview_message(request: Request, body: CheckRequest, db: Session = De
         redacted_types=redacted_types
     )
 @app.get("/api/v1/sessions", response_model=SessionListResponse)
-def get_sessions(db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
+def get_sessions(db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
     sessions = db.query(ChatSession).order_by(ChatSession.created_at.desc()).all()
     return SessionListResponse(
-        sessions=[ChatSessionInfo(id=s.id, title=s.title, created_at=s.created_at) for s in sessions]
+        sessions=[ChatSessionInfo(id=str(s.id), title=s.title, created_at=s.created_at) for s in sessions]
     )
 
 @app.get("/api/v1/sessions/{session_id}", response_model=SessionDetailResponse)
-def get_session(session_id: str, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
+def get_session(session_id: str, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
     session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -308,13 +438,13 @@ def get_session(session_id: str, db: Session = Depends(get_db), credentials: HTT
         msg_infos.append(ChatMessageInfo(role=m.role, content=m.content, created_at=m.created_at, redacted_types=rt))
         
     return SessionDetailResponse(
-        id=session.id,
+        id=str(session.id),
         title=session.title,
         messages=msg_infos
     )
 
 @app.delete("/api/v1/sessions/{session_id}")
-def delete_session(session_id: str, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
+def delete_session(session_id: str, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
     session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -332,7 +462,7 @@ class BlockedMessageSave(_BaseModel):
     model_explanation: Optional[str] = None
 
 @app.post("/api/v1/sessions/save-blocked")
-def save_blocked_message(body: BlockedMessageSave, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
+def save_blocked_message(body: BlockedMessageSave, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
     """Save a blocked message to the DB so it appears when the session is restored."""
     db_sess = db.query(ChatSession).filter(ChatSession.id == body.session_id).first()
     if not db_sess:
@@ -352,8 +482,9 @@ from app.models import BatchCheckRequest, BatchCheckResponse, CheckResult, Block
 
 @app.post("/api/v1/check_batch", response_model=BatchCheckResponse)
 @limiter.limit("10/minute")
-def check_message_batch(request: Request, body: BatchCheckRequest, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
-    tier_config, custom_labels = get_tier_config_helper(db, body.user_id)
+def check_message_batch(request: Request, body: BatchCheckRequest, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
+    user = request.state.current_user
+    tier_config, custom_labels = get_tier_config_helper(db, user)
 
     results = []
     for msg in body.messages:
@@ -362,8 +493,9 @@ def check_message_batch(request: Request, body: BatchCheckRequest, db: Session =
         detected_types_list = [d.type for d in detections]
         flagged_sequences_list = [msg[d.start:d.end] for d in detections]
         stat_log = StatLog(
-            user_id=body.user_id,
-            session_id="batch",
+            user_id=user.id,
+            org_id=user.org_id,
+            session_id=None,
             action=action,
             detected_types=json.dumps(detected_types_list),
             flagged_sequences=json.dumps(flagged_sequences_list),
@@ -403,10 +535,49 @@ def health():
     return {"status": "ok"}
 
 @app.get("/api/v1/admin/config/{user_id}", response_model=TierConfigResponse)
-def get_user_config(user_id: str, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
-
-    user_config = db.query(UserConfig).filter(UserConfig.user_id == user_id).first()
-    if not user_config:
+def get_user_config(request: Request, user_id: str, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
+    current_user = request.state.current_user
+    is_base_user = getattr(request.state, "is_base_user", True)
+    
+    target_user = None
+    if user_id in ["default_user", "me"]:
+        if is_base_user:
+            target_user = current_user
+        else:
+            if user_id == "default_user":
+                from app.models_db import Organization
+                org = db.query(Organization).filter(Organization.id == current_user.org_id).first()
+                if not org or not org.default_tier_block:
+                    return TierConfigResponse(
+                        user_id=user_id,
+                        tier_block=list(TIER_BLOCK),
+                        tier_redact=list(TIER_REDACT),
+                        tier_audit=list(TIER_AUDIT)
+                    )
+                return TierConfigResponse(
+                    user_id=user_id,
+                    tier_block=org.default_tier_block,
+                    tier_redact=org.default_tier_redact,
+                    tier_audit=org.default_tier_audit
+                )
+            else:
+                target_user = current_user
+    else:
+        import uuid
+        try:
+            uid = uuid.UUID(user_id)
+            if is_base_user and uid != current_user.id:
+                raise HTTPException(status_code=403, detail="Access denied")
+            if not is_base_user:
+                target_user = db.query(User).filter(User.id == uid, User.org_id == current_user.org_id).first()
+                if not target_user:
+                    raise HTTPException(status_code=403, detail="Access denied")
+            else:
+                target_user = current_user
+        except:
+            raise HTTPException(status_code=400, detail="Invalid user_id")
+            
+    if not target_user or not target_user.tier_block:
         return TierConfigResponse(
             user_id=user_id,
             tier_block=list(TIER_BLOCK),
@@ -415,36 +586,100 @@ def get_user_config(user_id: str, db: Session = Depends(get_db), credentials: HT
         )
     return TierConfigResponse(
         user_id=user_id,
-        tier_block=json.loads(user_config.tier_block),
-        tier_redact=json.loads(user_config.tier_redact),
-        tier_audit=json.loads(user_config.tier_audit)
+        tier_block=target_user.tier_block,
+        tier_redact=target_user.tier_redact,
+        tier_audit=target_user.tier_audit
     )
 
 @app.post("/api/v1/admin/config/{user_id}")
-def update_user_config(user_id: str, body: TierConfigUpdate, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
-
-    user_config = db.query(UserConfig).filter(UserConfig.user_id == user_id).first()
-    if not user_config:
-        user_config = UserConfig(user_id=user_id)
-        db.add(user_config)
+def update_user_config(request: Request, user_id: str, body: TierConfigUpdate, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
+    current_user = request.state.current_user
+    is_base_user = getattr(request.state, "is_base_user", True)
     
-    user_config.tier_block = json.dumps(body.tier_block)
-    user_config.tier_redact = json.dumps(body.tier_redact)
-    user_config.tier_audit = json.dumps(body.tier_audit)
-    db.commit()
-    return {"status": "updated"}
+    if user_id in ["default_user", "me"]:
+        if is_base_user:
+            current_user.tier_block = body.tier_block
+            current_user.tier_redact = body.tier_redact
+            current_user.tier_audit = body.tier_audit
+            db.add(current_user)
+            db.commit()
+            return {"status": "updated"}
+        else:
+            if user_id == "default_user":
+                from app.models_db import Organization
+                org = db.query(Organization).filter(Organization.id == current_user.org_id).first()
+                if org:
+                    org.default_tier_block = body.tier_block
+                    org.default_tier_redact = body.tier_redact
+                    org.default_tier_audit = body.tier_audit
+                    db.add(org)
+                    db.commit()
+                    return {"status": "updated"}
+                raise HTTPException(status_code=404, detail="Organization not found")
+            else:
+                current_user.tier_block = body.tier_block
+                current_user.tier_redact = body.tier_redact
+                current_user.tier_audit = body.tier_audit
+                db.add(current_user)
+                db.commit()
+                return {"status": "updated"}
+    else:
+        import uuid
+        try:
+            uid = uuid.UUID(user_id)
+            if is_base_user and uid != current_user.id:
+                raise HTTPException(status_code=403, detail="Access denied")
+            if not is_base_user:
+                target_user = db.query(User).filter(User.id == uid, User.org_id == current_user.org_id).first()
+                if not target_user:
+                    raise HTTPException(status_code=403, detail="Access denied")
+            else:
+                target_user = current_user
+        except:
+            raise HTTPException(status_code=400, detail="Invalid user_id")
+            
+        target_user.tier_block = body.tier_block
+        target_user.tier_redact = body.tier_redact
+        target_user.tier_audit = body.tier_audit
+        db.add(target_user)
+        db.commit()
+        return {"status": "updated"}
 
 from typing import Optional
 from datetime import datetime
 
-def fetch_stats(db, user_id=None, start_time=None, end_time=None):
+def fetch_stats(db, current_user, is_base_user: bool, user_id=None, start_time=None, end_time=None):
+    # ponytail: resolve "me" to the current user's UUID string
+    if user_id == "me":
+        user_id = str(current_user.id)
+
     query = db.query(StatLog)
-    if user_id:
-        query = query.filter(StatLog.user_id == user_id)
+    
+    # Isolation
+    if is_base_user:
+        query = query.filter(StatLog.user_id == current_user.id)
+    else:
+        query = query.filter(StatLog.org_id == current_user.org_id)
+        
+    if user_id and user_id not in ["default_user", "me"]:
+        import uuid
+        try:
+            uid = uuid.UUID(user_id)
+            if is_base_user and uid != current_user.id:
+                return StatsResponse(total_requests=0, actions=[], detected_types=[], top_sequences=[])
+            if not is_base_user:
+                target_user = db.query(User).filter(User.id == uid, User.org_id == current_user.org_id).first()
+                if not target_user:
+                    return StatsResponse(total_requests=0, actions=[], detected_types=[], top_sequences=[])
+            query = query.filter(StatLog.user_id == uid)
+        except:
+            return StatsResponse(total_requests=0, actions=[], detected_types=[], top_sequences=[])
+            
     if start_time:
         query = query.filter(StatLog.created_at >= start_time)
     if end_time:
         query = query.filter(StatLog.created_at <= end_time)
+        
     total = query.with_entities(func.count(StatLog.id)).scalar() or 0
     actions = query.with_entities(StatLog.action, func.count(StatLog.id)).group_by(StatLog.action).all()
     type_counts = Counter()
@@ -476,47 +711,45 @@ def fetch_stats(db, user_id=None, start_time=None, end_time=None):
     )
 
 @app.get("/api/v1/admin/stats", response_model=StatsResponse)
-def get_global_stats(start_time: Optional[datetime] = None, end_time: Optional[datetime] = None, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
-    return fetch_stats(db, None, start_time, end_time)
+def get_global_stats(request: Request, start_time: Optional[datetime] = None, end_time: Optional[datetime] = None, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
+    current_user = request.state.current_user
+    is_base_user = getattr(request.state, "is_base_user", True)
+    return fetch_stats(db, current_user, is_base_user, None, start_time, end_time)
 
 @app.get("/api/v1/admin/stats/{user_id}", response_model=StatsResponse)
-def get_user_stats(user_id: str, start_time: Optional[datetime] = None, end_time: Optional[datetime] = None, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
-    return fetch_stats(db, user_id, start_time, end_time)
-
-@app.get("/api/v1/admin/stats/{user_id}", response_model=StatsResponse)
-def get_user_stats(user_id: str, start_time: Optional[datetime] = None, end_time: Optional[datetime] = None, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
-
-    
-    base_query = db.query(StatLog).filter(StatLog.user_id == user_id)
-    if start_time:
-        base_query = base_query.filter(StatLog.created_at >= start_time)
-    if end_time:
-        base_query = base_query.filter(StatLog.created_at <= end_time)
-        
-    total = base_query.with_entities(func.count(StatLog.id)).scalar() or 0
-    actions = base_query.with_entities(StatLog.action, func.count(StatLog.id)).group_by(StatLog.action).all()
-    
-    type_counts = Counter()
-    seq_counts = Counter()
-    for log in base_query.with_entities(StatLog.detected_types, StatLog.flagged_sequences).all():
-        types = json.loads(log[0])
-        type_counts.update(types)
-        if log[1]:
-            seqs = json.loads(log[1])
-            seq_counts.update(seqs)
-            
-    top_seqs = seq_counts.most_common(10)
-        
-    return StatsResponse(
-        total_requests=total,
-        actions=[StatCount(name=a[0], count=a[1]) for a in actions],
-        detected_types=[StatCount(name=k, count=v) for k, v in type_counts.items()],
-        top_sequences=[StatCount(name=k, count=v) for k, v in top_seqs]
-    )
+def get_user_stats(request: Request, user_id: str, start_time: Optional[datetime] = None, end_time: Optional[datetime] = None, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
+    current_user = request.state.current_user
+    is_base_user = getattr(request.state, "is_base_user", True)
+    return fetch_stats(db, current_user, is_base_user, user_id, start_time, end_time)
 
 @app.get("/api/v1/admin/logs/{user_id}")
-def get_user_logs(user_id: str, limit: int = 50, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
-    logs = db.query(StatLog).filter(StatLog.user_id == user_id).order_by(StatLog.created_at.desc()).limit(limit).all()
+def get_user_logs(request: Request, user_id: str, limit: int = 50, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
+    current_user = request.state.current_user
+    is_base_user = getattr(request.state, "is_base_user", True)
+    
+    # ponytail: handle keyword scopes for base and org users simply
+    if is_base_user:
+        # Base users are strictly isolated to their own logs
+        logs = db.query(StatLog).filter(StatLog.user_id == current_user.id).order_by(StatLog.created_at.desc()).limit(limit).all()
+    else:
+        # Org users
+        if user_id == "me":
+            logs = db.query(StatLog).filter(StatLog.user_id == current_user.id).order_by(StatLog.created_at.desc()).limit(limit).all()
+        elif user_id == "default_user":
+            # Return org-wide logs
+            logs = db.query(StatLog).filter(StatLog.org_id == current_user.org_id).order_by(StatLog.created_at.desc()).limit(limit).all()
+        else:
+            import uuid
+            try:
+                uid = uuid.UUID(user_id)
+            except:
+                return []
+            
+            target_user = db.query(User).filter(User.id == uid, User.org_id == current_user.org_id).first()
+            if not target_user:
+                raise HTTPException(status_code=403, detail="Access denied")
+                
+            logs = db.query(StatLog).filter(StatLog.user_id == uid).order_by(StatLog.created_at.desc()).limit(limit).all()
 
     result_logs = []
     for log in logs:
@@ -534,6 +767,8 @@ def get_user_logs(user_id: str, limit: int = 50, db: Session = Depends(get_db), 
                     seq_val = json.loads(seq_val)
                 except:
                     seq_val = []
+            else:
+                seq_val = []
         else:
             seq_val = []
             
@@ -543,7 +778,7 @@ def get_user_logs(user_id: str, limit: int = 50, db: Session = Depends(get_db), 
             "detected_types": types_val,
             "flagged_sequences": seq_val,
             "original_message": log.original_message,
-            "created_at": log.created_at.isoformat() + "Z"
+            "created_at": log.created_at.isoformat()
         })
     return result_logs
 
@@ -561,12 +796,17 @@ def list_patterns():
     }
 
 from app.models import CustomLabelCreate, CustomLabelResponse
-from app.db import CustomLabel
 
 @app.post("/api/v1/admin/custom_labels", response_model=CustomLabelResponse)
-def create_custom_label(label: CustomLabelCreate, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
-
-    existing = db.query(CustomLabel).filter(CustomLabel.name == label.name).first()
+def create_custom_label(request: Request, label: CustomLabelCreate, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
+    user = request.state.current_user if hasattr(request.state, 'current_user') else None
+    is_base_user = getattr(request.state, "is_base_user", True)
+    
+    if is_base_user:
+        existing = db.query(CustomLabel).filter(CustomLabel.name == label.name, CustomLabel.user_id == user.id).first()
+    else:
+        existing = db.query(CustomLabel).filter(CustomLabel.name == label.name, CustomLabel.org_id == user.org_id).first()
+        
     if existing:
         raise HTTPException(status_code=400, detail="Label already exists")
     
@@ -577,8 +817,6 @@ def create_custom_label(label: CustomLabelCreate, db: Session = Depends(get_db),
     api_key = os.getenv("GEMINI_API_KEY", "").strip('"').strip("'")
     if api_key:
         try:
-        
-        
             client = genai.Client(api_key=api_key)
             words_context = ""
             if label.dictionary_words:
@@ -591,8 +829,17 @@ def create_custom_label(label: CustomLabelCreate, db: Session = Depends(get_db),
             dump_data["regex_pattern"] = response.text.strip().strip('`').strip()
         except Exception as e:
             print("Gemini Regex Generation Failed:", e)
-    
-    db_label = CustomLabel(**dump_data)
+            
+    db_label = CustomLabel(
+        name=dump_data.get("name"),
+        description=dump_data.get("description"),
+        tier=dump_data.get("tier"),
+        regex_pattern=dump_data.get("regex_pattern"),
+        scope="user" if is_base_user else "org",
+        user_id=user.id if is_base_user else None,
+        org_id=None if is_base_user else user.org_id,
+        dictionary_words=dump_data.get("dictionary_words", "[]")
+    )
     db.add(db_label)
     db.commit()
     db.refresh(db_label)
@@ -613,9 +860,15 @@ def create_custom_label(label: CustomLabelCreate, db: Session = Depends(get_db),
     }
 
 @app.get("/api/v1/admin/custom_labels", response_model=list[CustomLabelResponse])
-def get_custom_labels(db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
-
-    labels = db.query(CustomLabel).all()
+def get_custom_labels(request: Request, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
+    current_user = request.state.current_user
+    is_base_user = getattr(request.state, "is_base_user", True)
+    
+    if is_base_user:
+        labels = db.query(CustomLabel).filter(CustomLabel.user_id == current_user.id).all()
+    else:
+        labels = db.query(CustomLabel).filter(CustomLabel.org_id == current_user.org_id).all()
+        
     results = []
     for lbl in labels:
         try:
@@ -634,10 +887,19 @@ def get_custom_labels(db: Session = Depends(get_db), credentials: HTTPBasicCrede
     return results
 
 @app.delete("/api/v1/admin/custom_labels/{label_id}")
-def delete_custom_label(label_id: int, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
+def delete_custom_label(request: Request, label_id: int, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
+    user = request.state.current_user
+    is_base_user = getattr(request.state, "is_base_user", True)
+    
     db_label = db.query(CustomLabel).filter(CustomLabel.id == label_id).first()
     if not db_label:
         raise HTTPException(status_code=404, detail="Label not found")
+        
+    if is_base_user and db_label.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    if not is_base_user and db_label.org_id != user.org_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+        
     db.delete(db_label)
     db.commit()
     return {"status": "deleted"}
@@ -647,11 +909,18 @@ class CustomLabelUpdate(BaseModel):
     dictionary_words: list[str]
 
 @app.put("/api/v1/admin/custom_labels/{label_id}", response_model=CustomLabelResponse)
-def update_custom_label(label_id: int, update: CustomLabelUpdate, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
-
+def update_custom_label(request: Request, label_id: int, update: CustomLabelUpdate, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
+    user = request.state.current_user
+    is_base_user = getattr(request.state, "is_base_user", True)
+    
     db_label = db.query(CustomLabel).filter(CustomLabel.id == label_id).first()
     if not db_label:
         raise HTTPException(status_code=404, detail="Label not found")
+        
+    if is_base_user and db_label.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    if not is_base_user and db_label.org_id != user.org_id:
+        raise HTTPException(status_code=403, detail="Access denied")
         
     db_label.dictionary_words = json.dumps(update.dictionary_words)
     db.commit()
@@ -678,13 +947,15 @@ import csv
 import io
 
 @app.get("/api/v1/admin/custom_labels/xlsx")
-def export_custom_labels_xlsx(db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
-
-
-
+def export_custom_labels_xlsx(request: Request, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
+    current_user = request.state.current_user
+    is_base_user = getattr(request.state, "is_base_user", True)
     
-    labels = db.query(CustomLabel).all()
-    
+    if is_base_user:
+        labels = db.query(CustomLabel).filter(CustomLabel.user_id == current_user.id).all()
+    else:
+        labels = db.query(CustomLabel).filter(CustomLabel.org_id == current_user.org_id).all()
+        
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Entity Labels"
@@ -710,14 +981,15 @@ def export_custom_labels_xlsx(db: Session = Depends(get_db), credentials: HTTPBa
     )
 
 @app.get("/api/v1/admin/dictionary/xlsx")
-def export_dictionary_xlsx(db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
-
-
-
-
+def export_dictionary_xlsx(request: Request, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
+    current_user = request.state.current_user
+    is_base_user = getattr(request.state, "is_base_user", True)
     
-    labels = db.query(CustomLabel).all()
-    
+    if is_base_user:
+        labels = db.query(CustomLabel).filter(CustomLabel.user_id == current_user.id).all()
+    else:
+        labels = db.query(CustomLabel).filter(CustomLabel.org_id == current_user.org_id).all()
+        
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Dictionary Labels"
@@ -747,13 +1019,8 @@ def export_dictionary_xlsx(db: Session = Depends(get_db), credentials: HTTPBasic
     )
 
 @app.post("/api/v1/admin/custom_labels/import/preview")
-async def import_custom_labels_xlsx_preview(file: UploadFile = File(...), db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
-
-
+async def import_custom_labels_xlsx_preview(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
     import os
-
-
-
     from pydantic import BaseModel
     
     class TierResponse(BaseModel):
@@ -771,6 +1038,9 @@ async def import_custom_labels_xlsx_preview(file: UploadFile = File(...), db: Se
     if "Name" not in header:
         raise HTTPException(status_code=400, detail="Invalid Excel format. Missing 'Name' header.")
         
+    current_user = request.state.current_user
+    is_base_user = getattr(request.state, "is_base_user", True)
+    
     api_key = os.getenv("GEMINI_API_KEY", "").strip('"').strip("'")
     client = genai.Client(api_key=api_key) if api_key else None
     
@@ -789,7 +1059,10 @@ async def import_custom_labels_xlsx_preview(file: UploadFile = File(...), db: Se
         words = [w.strip() for w in words_str.split(",")] if words_str else []
         
         # Determine if it's new
-        existing = db.query(CustomLabel).filter(CustomLabel.name == name).first()
+        if is_base_user:
+            existing = db.query(CustomLabel).filter(CustomLabel.name == name, CustomLabel.user_id == current_user.id).first()
+        else:
+            existing = db.query(CustomLabel).filter(CustomLabel.name == name, CustomLabel.org_id == current_user.org_id).first()
         is_new = existing is None
         
         # If tier is missing, use Gemini to strictly predict it
@@ -830,11 +1103,11 @@ class ImportConfirmPayload(BaseModel):
     items: list[dict]
 
 @app.post("/api/v1/admin/custom_labels/import/confirm")
-def import_custom_labels_xlsx_confirm(payload: ImportConfirmPayload, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(verify_credentials)):
-
+def import_custom_labels_xlsx_confirm(request: Request, payload: ImportConfirmPayload, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
     import os
-
-
+    
+    current_user = request.state.current_user
+    is_base_user = getattr(request.state, "is_base_user", True)
     
     api_key = os.getenv("GEMINI_API_KEY", "").strip('"').strip("'")
     client = genai.Client(api_key=api_key) if api_key else None
@@ -846,7 +1119,11 @@ def import_custom_labels_xlsx_confirm(payload: ImportConfirmPayload, db: Session
         tier = item.get("tier", "tier_audit")
         words = item.get("dictionary_words", [])
         
-        existing = db.query(CustomLabel).filter(CustomLabel.name == name).first()
+        if is_base_user:
+            existing = db.query(CustomLabel).filter(CustomLabel.name == name, CustomLabel.user_id == current_user.id).first()
+        else:
+            existing = db.query(CustomLabel).filter(CustomLabel.name == name, CustomLabel.org_id == current_user.org_id).first()
+            
         if existing:
             existing.description = description
             existing.tier = tier
@@ -868,6 +1145,9 @@ def import_custom_labels_xlsx_confirm(payload: ImportConfirmPayload, db: Session
                 name=name,
                 description=description,
                 tier=tier,
+                scope="user" if is_base_user else "org",
+                user_id=current_user.id if is_base_user else None,
+                org_id=None if is_base_user else current_user.org_id,
                 dictionary_words=json.dumps(words),
                 regex_pattern=regex_pattern
             )
@@ -887,12 +1167,12 @@ import os
 async def upload_document(
     request: Request, 
     file: UploadFile = File(...), 
-    user_id: str = Form("default_user"),
     session_id: str = Form("default_session"),
     db: Session = Depends(get_db), 
-    credentials: HTTPBasicCredentials = Depends(verify_credentials)
+    _: bool = Depends(verify_credentials)
 ):
-    tier_config, custom_labels = get_tier_config_helper(db, user_id)
+    user = request.state.current_user
+    tier_config, custom_labels = get_tier_config_helper(db, user)
     
     # Save the uploaded file temporarily
     suffix = os.path.splitext(file.filename)[1] if file.filename else ".tmp"
@@ -914,12 +1194,19 @@ async def upload_document(
     # Process the extracted text using the standard pipeline
     processed_text, detections, action = await asyncio.to_thread(pipeline.run, extracted_text, [], [], tier_config, custom_labels)
     
+    import uuid
+    try:
+        real_sess_id = uuid.UUID(session_id)
+    except:
+        real_sess_id = None
+
     detected_types_list = [d.type for d in detections]
     flagged_sequences_list = [extracted_text[d.start:d.end] for d in detections]
     
     stat_log = StatLog(
-        user_id=user_id,
-        session_id=session_id,
+        user_id=user.id,
+        org_id=user.org_id,
+        session_id=real_sess_id,
         action=action,
         detected_types=json.dumps(detected_types_list),
         flagged_sequences=json.dumps(flagged_sequences_list)

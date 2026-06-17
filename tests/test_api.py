@@ -4,7 +4,12 @@ from fastapi.security import HTTPBasicCredentials
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-from app.db import Base, get_db
+from fastapi import Request
+import uuid
+import json
+from unittest.mock import patch
+
+from app.models_db import Base, get_db, User, Organization
 
 engine = create_engine(
     "sqlite:///:memory:", 
@@ -14,6 +19,26 @@ engine = create_engine(
 Base.metadata.create_all(bind=engine)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+# Seed the test DB and cache user
+test_db = TestingSessionLocal()
+test_org = Organization(id=uuid.uuid4(), name="Test Org", retention_days=90)
+test_db.add(test_org)
+test_db.commit()
+
+test_user = User(
+    id=uuid.uuid4(), 
+    org_id=test_org.id, 
+    email="test@email.com", 
+    password_hash="pass", 
+    role="user",
+    tier_block=[],
+    tier_redact=[],
+    tier_audit=[]
+)
+test_db.add(test_user)
+test_db.commit()
+test_db.refresh(test_user)
+
 def override_get_db():
     try:
         db = TestingSessionLocal()
@@ -21,10 +46,55 @@ def override_get_db():
     finally:
         db.close()
 
-app.dependency_overrides[verify_credentials] = lambda: HTTPBasicCredentials(username="admin", password="password")
+def override_verify_credentials(request: Request):
+    request.state.current_user = test_user
+    return HTTPBasicCredentials(username="test@email.com", password="password")
+
+app.dependency_overrides[verify_credentials] = override_verify_credentials
 app.dependency_overrides[get_db] = override_get_db
 
 client = TestClient(app)
+
+# --- Mock the Pipeline to avoid HF Space timeouts ---
+class MockDetection:
+    def __init__(self, type_name, start, end, confidence=0.99, subtype=""):
+        self.type = type_name
+        self.start = start
+        self.end = end
+        self.confidence = confidence
+        self.subtype = subtype
+
+def mock_pipeline_run(text, allowed_pii=[], ignored_values=[], tier_config=None, custom_labels=[]):
+    if "sk-proj" in text:
+        return text, [MockDetection("api_key", text.find("sk-proj"), len(text))], "BLOCK"
+    if "def my_function" in text:
+        return text, [MockDetection("code", text.find("def"), len(text))], "BLOCK"
+    if "user@example.com" in text:
+        return text.replace("user@example.com", "[EMAIL]"), [MockDetection("email", text.find("user@"), text.find(".com")+4)], "REDACT"
+    if "Sundar Pichai" in text:
+        return text, [MockDetection("person", text.find("Sundar"), text.find("Pichai")+6)], "AUDIT"
+    if "4111222233334446" in text:
+        return text, [MockDetection("credit_card", text.find("4111"), text.find("4446")+4)], "BLOCK"
+    if "d3b07384d" in text:
+        return text, [MockDetection("private_key", text.find("d3b0"), len(text))], "BLOCK"
+    if "New Delhi" in text:
+        return text, [MockDetection("location", text.find("New"), text.find("Delhi")+5)], "AUDIT"
+    if "let domain" in text:
+        return text, [MockDetection("code", text.find("let"), len(text))], "BLOCK"
+    if "Chase" in text:
+        return text, [MockDetection("organization", text.find("Chase"), text.find("Chase")+5)], "AUDIT"
+    if "eyJ" in text:
+        return text, [MockDetection("private_key", text.find("eyJ"), len(text))], "BLOCK"
+    return text, [], "CLEAN"
+
+import pytest
+
+@pytest.fixture(autouse=True)
+def mock_pipeline():
+    patcher = patch('app.pipeline.pipeline.run', side_effect=mock_pipeline_run)
+    patcher.start()
+    yield
+    patcher.stop()
 
 def test_health():
     response = client.get("/api/v1/health")

@@ -7,6 +7,7 @@ import { Shield, Plus, PanelLeft, Send, CheckCircle2, ShieldAlert, X, ShieldBan,
 import ReactMarkdown from 'react-markdown';
 import { driver } from "driver.js";
 import "driver.js/dist/driver.css";
+import { SignIn, UserButton, useAuth } from "@clerk/nextjs";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -54,6 +55,7 @@ export default function ChatPage() {
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const [loadingIndex, setLoadingIndex] = useState(0);
   const [stagedFile, setStagedFile] = useState<File | null>(null);
+  const { getToken, isLoaded, isSignedIn, orgId, orgRole } = useAuth();
 
   const placeholders = [
     "How can I help you today?",
@@ -112,20 +114,15 @@ export default function ChatPage() {
     if (window.innerWidth < 768) {
       setIsSidebarOpen(false);
     }
-    const savedAuth = localStorage.getItem('basic_auth');
-    const authExpiry = localStorage.getItem('basic_auth_expiry');
-    
-    if (savedAuth && authExpiry) {
-      if (Date.now() < parseInt(authExpiry, 10)) {
-        setAuthHeader(savedAuth);
-        setIsAuthenticated(true);
-        loadSessions(savedAuth);
-      } else {
-        localStorage.removeItem('basic_auth');
-        localStorage.removeItem('basic_auth_expiry');
-      }
-    }
   }, []);
+
+  // Load sessions as soon as Clerk confirms the user is signed in
+  useEffect(() => {
+    if (isLoaded && isSignedIn) {
+      setIsAuthenticated(true);
+      loadSessions();
+    }
+  }, [isLoaded, isSignedIn]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -163,12 +160,11 @@ export default function ChatPage() {
     }
   };
 
-  const loadSessions = async (overrideAuth?: string) => {
-    const auth = overrideAuth || authHeader;
-    if (!auth) return;
+  const loadSessions = async () => {
+
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/sessions`, {
-        headers: { 'Authorization': `Basic ${auth}` }
+        headers: { 'Authorization': `Bearer ${await getToken()}` }
       });
       if (res.status === 401) {
         localStorage.removeItem('basic_auth');
@@ -188,7 +184,7 @@ export default function ChatPage() {
   const loadSession = async (id: string) => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/sessions/${id}`, {
-        headers: { 'Authorization': `Basic ${authHeader}` }
+        headers: { 'Authorization': `Bearer ${await getToken()}` }
       });
       if (res.ok) {
         const data = await res.json();
@@ -213,7 +209,7 @@ export default function ChatPage() {
     try {
       await fetch(`${API_BASE_URL}/api/v1/sessions/${id}`, { 
         method: 'DELETE',
-        headers: { 'Authorization': `Basic ${authHeader}` }
+        headers: { 'Authorization': `Bearer ${await getToken()}` }
       });
       setSessions(prev => prev.filter(s => s.id !== id));
       if (currentSessionId === id) {
@@ -285,7 +281,7 @@ export default function ChatPage() {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Basic ${authHeader}`
+          'Authorization': `Bearer ${await getToken()}`
         },
         body: JSON.stringify({ message: originalText, session_id: currentSessionId, allowed_pii: allowedPII, ignored_values: [] })
       });
@@ -316,7 +312,7 @@ export default function ChatPage() {
         // Persist to DB so blocked messages survive session restore
         fetch(`${API_BASE_URL}/api/v1/sessions/save-blocked`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Basic ${authHeader}` },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` },
           body: JSON.stringify({ session_id: currentSessionId, message: originalText })
         }).then(() => loadSessions()).catch(e => console.error('Failed to save blocked message', e));
         setIsLoading(false);
@@ -372,7 +368,7 @@ export default function ChatPage() {
       const res = await fetch(`${API_BASE_URL}/api/v1/document/upload`, {
         method: 'POST',
         headers: { 
-          'Authorization': `Basic ${authHeader}`
+          'Authorization': `Bearer ${await getToken()}`
         },
         body: formData
       });
@@ -414,7 +410,7 @@ export default function ChatPage() {
         
         fetch(`${API_BASE_URL}/api/v1/sessions/save-blocked`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Basic ${authHeader}` },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` },
           body: JSON.stringify({ session_id: currentSessionId, message: `[Document: ${file.name}]`, model_explanation: explanation })
         }).then(() => loadSessions()).catch(e => console.error('Failed to save blocked document', e));
         
@@ -461,7 +457,7 @@ export default function ChatPage() {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Basic ${authHeader}`
+          'Authorization': `Bearer ${await getToken()}`
         },
         body: JSON.stringify({ message: text, session_id: currentSessionId, allowed_pii: allowedPII, ignored_values: ignoredValues })
       });
@@ -486,7 +482,7 @@ export default function ChatPage() {
         
         fetch(`${API_BASE_URL}/api/v1/sessions/save-blocked`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Basic ${authHeader}` },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` },
           body: JSON.stringify({ session_id: currentSessionId, message: text, model_explanation: explanation })
         }).then(() => loadSessions()).catch(e => console.error('Failed to save blocked message', e));
 
@@ -656,66 +652,21 @@ export default function ChatPage() {
   };
 
 
-  if (!isAuthenticated) {
+  if (!isLoaded) return <div className="h-screen flex items-center justify-center bg-[#FAF9F5]">Loading Secure Environment...</div>;
+  
+  if (!isSignedIn) {
     return (
-    <div className="flex items-center justify-center h-screen bg-[#FAF9F5] font-sans text-[#2A1F1A]">
-        <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-sm border border-[#E0D9C8]">
-          <div className="flex justify-center mb-6 text-primary">
-            <img src="/logo-t.png" alt="ADOPSHUN AI Logo" className="h-12 w-auto object-contain" />
-          </div>
-          <h2 className="text-2xl font-bold text-center mb-6">Secure Login</h2>
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">Username</label>
-              <input 
-                type="text" 
-                value={loginUser}
-                autoComplete="username"
-                onChange={e => setLoginUser(e.target.value)}
-                className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-primary outline-none"
-              />
-            </div>
-            <div className="relative">
-              <label className="block text-sm font-medium mb-1">Password</label>
-              <input 
-                type={showPassword ? "text" : "password"} 
-                value={loginPass}
-                autoComplete="current-password"
-                onChange={e => setLoginPass(e.target.value)}
-                className="w-full px-3 py-2 pr-10 border rounded focus:ring-2 focus:ring-primary outline-none"
-              />
-              <button 
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-[30px] text-gray-400 hover:text-gray-600"
-              >
-                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
-            </div>
-            <div className="flex items-center space-x-2">
-              <input
-                type="checkbox"
-                id="keepLoggedIn"
-                checked={keepLoggedIn}
-                onChange={e => setKeepLoggedIn(e.target.checked)}
-                className="w-4 h-4 text-primary rounded border-gray-300 focus:ring-primary"
-              />
-              <label htmlFor="keepLoggedIn" className="text-sm font-medium">Keep me logged in</label>
-            </div>
-            {loginError && <p className="text-red-500 text-sm text-center">{loginError}</p>}
-            <button type="submit" className="w-full py-2 bg-primary text-white font-medium rounded hover:bg-primary/90 transition-colors">
-              Sign In
-            </button>
-          </form>
-
-
+      <div className="flex flex-col items-center justify-center h-screen bg-[#FAF9F5] font-sans p-4 text-[#2A1F1A]">
+        <div className="flex justify-center mb-6">
+          <img src="/logo-t.png" alt="ADOPSHUN AI Logo" className="h-12 w-auto object-contain" />
         </div>
+        <SignIn routing="hash" />
       </div>
     );
   }
 
   return (
-    <div className="flex h-screen bg-[#FAF9F5] overflow-hidden font-sans text-[#2A1F1A]">
+        <div className="flex h-screen bg-[#FAF9F5] overflow-hidden font-sans text-[#2A1F1A]">
       
       {/* Sidebar Overlay for Mobile */}
       <AnimatePresence>
@@ -764,6 +715,15 @@ export default function ChatPage() {
             >
               <Plus size={16} /> New chat
             </button>
+            <div className="mt-2 flex items-center gap-2 p-2">
+              <UserButton
+                appearance={{ elements: { userButtonPopoverActionButton__manageOrganization: { display: !orgId ? 'none' : undefined } } }}
+                organizationProfileMode={!orgId ? 'navigation' : undefined}
+                organizationProfileUrl={!orgId ? undefined : undefined}
+                afterSignOutUrl="/"
+              />
+              <span className="text-sm font-medium">My Account</span>
+            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto p-3 space-y-1">
@@ -845,13 +805,15 @@ export default function ChatPage() {
             )}
           </div>
           <div className="flex items-center gap-2">
-            <a 
-              href="/admin/login" 
-              className="p-2 hover:bg-black/5 rounded-full text-muted-foreground hover:text-primary transition-colors flex items-center justify-center"
-              title="Admin Login"
-            >
-              <HatGlasses size={20} />
-            </a>
+            {isLoaded && isSignedIn && (!orgId || orgRole === 'org:admin') && (
+              <a 
+                href="/admin" 
+                className="p-2 hover:bg-black/5 rounded-full text-muted-foreground hover:text-primary transition-colors flex items-center justify-center"
+                title="Admin Dashboard"
+              >
+                <HatGlasses size={20} />
+              </a>
+            )}
           </div>
         </header>
 

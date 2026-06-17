@@ -1,4 +1,5 @@
 'use client';
+import { useAuth } from '@clerk/nextjs';
 
 import React, { useState, useEffect, useRef } from 'react';
 import { BookOpen, Download, Upload, Plus, X, ChevronDown, ChevronUp, Search, Trash } from 'lucide-react';
@@ -23,7 +24,7 @@ interface PreviewItem {
 }
 
 export default function DictionaryManager() {
-  const backendAuth = typeof window !== 'undefined' ? localStorage.getItem('basic_auth') : null;
+  const { getToken, orgId, isLoaded } = useAuth();
   const [customLabels, setCustomLabels] = useState<CustomLabel[]>([]);
   const [userConfig, setUserConfig] = useState<UserConfigResponse | null>(null);
   const [selectedLabelId, setSelectedLabelId] = useState<number | null>(null);
@@ -38,15 +39,20 @@ export default function DictionaryManager() {
 
   const [previewItems, setPreviewItems] = useState<PreviewItem[] | null>(null);
 
+  // ponytail: set configUserId dynamically based on role type
+  const configUserId = isLoaded && !orgId ? 'me' : 'default_user';
+
   useEffect(() => {
-    fetchCustomLabels();
-    fetchConfig();
-  }, []);
+    if (isLoaded) {
+      fetchCustomLabels();
+      fetchConfig();
+    }
+  }, [isLoaded, configUserId]);
 
   const fetchConfig = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/admin/config/default_user`, {
-        headers: { 'Authorization': `Basic ${backendAuth}` }
+      const res = await fetch(`${API_BASE_URL}/api/v1/admin/config/${configUserId}`, {
+        headers: { 'Authorization': `Bearer ${await getToken()}` }
       });
       if (res.ok) setUserConfig(await res.json());
     } catch (e) {
@@ -57,7 +63,7 @@ export default function DictionaryManager() {
   const fetchCustomLabels = async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/admin/custom_labels`, {
-        headers: { 'Authorization': `Basic ${backendAuth}` }
+        headers: { 'Authorization': `Bearer ${await getToken()}` }
       });
       if (res.ok) {
         const labels = await res.json();
@@ -94,7 +100,7 @@ export default function DictionaryManager() {
       const res = await fetch(`${API_BASE_URL}/api/v1/admin/custom_labels/${selectedLabel.id}`, {
         method: 'PUT',
         headers: { 
-          'Authorization': `Basic ${backendAuth}`,
+          'Authorization': `Bearer ${await getToken()}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ dictionary_words: updatedWords })
@@ -119,7 +125,7 @@ export default function DictionaryManager() {
       const res = await fetch(`${API_BASE_URL}/api/v1/admin/custom_labels/${selectedLabel.id}`, {
         method: 'PUT',
         headers: { 
-          'Authorization': `Basic ${backendAuth}`,
+          'Authorization': `Bearer ${await getToken()}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ dictionary_words: updatedWords })
@@ -139,7 +145,7 @@ export default function DictionaryManager() {
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/admin/custom_labels/${selectedLabel.id}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Basic ${backendAuth}` }
+        headers: { 'Authorization': `Bearer ${await getToken()}` }
       });
       if (res.ok) {
         setSelectedLabelId(null);
@@ -159,7 +165,7 @@ export default function DictionaryManager() {
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/admin/custom_labels/${id}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Basic ${backendAuth}` }
+        headers: { 'Authorization': `Bearer ${await getToken()}` }
       });
       if (res.ok) {
         if (selectedLabelId === id) setSelectedLabelId(null);
@@ -176,7 +182,7 @@ export default function DictionaryManager() {
   const handleExportXLSX = async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/admin/dictionary/xlsx`, {
-        headers: { 'Authorization': `Basic ${backendAuth}` }
+        headers: { 'Authorization': `Bearer ${await getToken()}` }
       });
       if (res.ok) {
         const blob = await res.blob();
@@ -205,7 +211,7 @@ export default function DictionaryManager() {
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/admin/custom_labels/import/preview`, {
         method: 'POST',
-        headers: { 'Authorization': `Basic ${backendAuth}` },
+        headers: { 'Authorization': `Bearer ${await getToken()}` },
         body: formData
       });
       if (res.ok) {
@@ -231,7 +237,7 @@ export default function DictionaryManager() {
       const res = await fetch(`${API_BASE_URL}/api/v1/admin/custom_labels/import/confirm`, {
         method: 'POST',
         headers: { 
-          'Authorization': `Basic ${backendAuth}`,
+          'Authorization': `Bearer ${await getToken()}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ items: previewItems })

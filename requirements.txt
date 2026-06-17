@@ -9,3 +9,6 @@ python-multipart
 markitdown[all]
 openpyxl
 psycopg2-binary
+clerk-backend-api
+PyJWT[crypto]
+passlib[bcrypt]

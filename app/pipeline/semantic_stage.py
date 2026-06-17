@@ -11,7 +11,11 @@ BENIGN_ANCHORS = [
     "The weather is nice today.",
     "I read a book by the author.",
     "As stated by the author in the book.",
-    "This is a generic conversational greeting."
+    "This is a generic conversational greeting.",
+    "Hello, good morning!",
+    "Good evening, sir.",
+    "Hi there, how are you doing today?",
+    "Hey, good afternoon."
 ]
 
 _anchor_embeddings = None
