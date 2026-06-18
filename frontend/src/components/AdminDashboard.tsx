@@ -14,13 +14,11 @@ type TierConfigResponse = { user_id: string; tier_block: string[]; tier_redact: 
 type UserLog = { id: number; action: string; detected_types: string[]; flagged_sequences: string[]; original_message?: string; created_at: string };
 
 const TIME_WINDOWS = [
-  { label: 'Last 6 Hours', hours: 6 },
-  { label: 'Last 12 Hours', hours: 12 },
-  { label: 'Last 24 Hours', hours: 24 },
-  { label: 'Last 7 Days', hours: 24 * 7 },
-  { label: 'Last 14 Days', hours: 24 * 14 },
+  { label: 'All Time', hours: 0 },
   { label: 'Last 30 Days', hours: 24 * 30 },
-  { label: 'All Time', hours: 0 }
+  { label: 'Last 7 Days', hours: 24 * 7 },
+  { label: 'Last 24 Hours', hours: 24 },
+  { label: 'Last 6 Hours', hours: 6 },
 ];
 
 type CustomLabel = { id: number; name: string; description: string; tier: string; created_at: string };
@@ -35,8 +33,8 @@ export default function AdminDashboard() {
   const [customLabels, setCustomLabels] = useState<CustomLabel[]>([]);
   const [newLabel, setNewLabel] = useState({ name: '', description: '', tier: 'tier_audit', dictionary_words: '' });
   const [isSaving, setIsSaving] = useState(false);
-  const [globalTimeWindow, setGlobalTimeWindow] = useState(24);
-  const [userTimeWindow, setUserTimeWindow] = useState(24);
+  const [globalTimeWindow, setGlobalTimeWindow] = useState(0);
+  const [userTimeWindow, setUserTimeWindow] = useState(0);
   
   // State to track which sequences are unmasked
   const [unmaskedSequences, setUnmaskedSequences] = useState<Record<string, boolean>>({});

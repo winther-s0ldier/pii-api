@@ -20,7 +20,7 @@ TIER_REDACT = {
 }
 
 TIER_AUDIT = {
-    "email", "full_name", "person", "location", "organization",
+    "full_name", "person", "location", "organization",
     "phone number", "physical address", "IP address"
 }
 

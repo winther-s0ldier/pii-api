@@ -3,7 +3,6 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.orm import Session
 from typing import Optional
-from google import genai
 import os
 import logging
 from dotenv import load_dotenv
@@ -19,7 +18,7 @@ from app.models import (
 from app.pipeline import pipeline
 from app.pipeline import regex_stage
 from app.config import get_block_warning, TIER_BLOCK, TIER_REDACT, TIER_AUDIT
-from app.models_db import init_db, get_db, Session as ChatSession, Message as ChatMessage, User, StatLog, CustomLabel, SessionLocal, Organization
+from app.models_db import init_db, get_db, Session as ChatSession, Message as ChatMessage, User, StatLog, CustomLabel, Organization
 import json
 from collections import Counter
 from sqlalchemy import func
@@ -35,7 +34,6 @@ from slowapi.errors import RateLimitExceeded
 from fastapi import Request
 import asyncio
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-import secrets
 import jwt
 from jwt import PyJWKClient
 
@@ -44,14 +42,16 @@ security_bearer = HTTPBearer(auto_error=False)
 
 CLERK_JWKS_URL = os.getenv("CLERK_JWKS_URL", "https://rapid-hyena-22.clerk.accounts.dev/.well-known/jwks.json")
 try:
-    jwks_client = PyJWKClient(CLERK_JWKS_URL)
+    jwks_client = PyJWKClient(CLERK_JWKS_URL, cache_keys=True, lifespan=3600)
 except:
     jwks_client = None
 
+_GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip('"').strip("'")
+_gemini_client = genai.Client(api_key=_GEMINI_API_KEY) if _GEMINI_API_KEY else None
 
-def verify_credentials(request: Request, bearer_creds: HTTPAuthorizationCredentials = Depends(security_bearer)):
+
+def verify_credentials(request: Request, bearer_creds: HTTPAuthorizationCredentials = Depends(security_bearer), db: Session = Depends(get_db)):
     from app.models_db import Organization, User
-    db = SessionLocal()
     try:
         user = None
 
@@ -59,7 +59,7 @@ def verify_credentials(request: Request, bearer_creds: HTTPAuthorizationCredenti
         global jwks_client
         if not jwks_client:
             try:
-                jwks_client = PyJWKClient(CLERK_JWKS_URL)
+                jwks_client = PyJWKClient(CLERK_JWKS_URL, cache_keys=True, lifespan=3600)
             except Exception as e:
                 print("Failed to initialize JWKS client:", e)
 
@@ -92,7 +92,6 @@ def verify_credentials(request: Request, bearer_creds: HTTPAuthorizationCredenti
                             is_active=True
                         )
                         db.add(org)
-                        db.flush()
                 else:
                     # Fallback if the user hasn't selected an organization in Clerk
                     org = db.query(Organization).first()
@@ -110,7 +109,13 @@ def verify_credentials(request: Request, bearer_creds: HTTPAuthorizationCredenti
                     db.add(user)
                     db.commit()
                     db.refresh(user)
+                else:
+                    db.commit()
                 user.is_base_user = (clerk_org_id is None)
+                if getattr(user, 'is_blocked', False):
+                    raise HTTPException(status_code=403, detail="Account suspended")
+            except HTTPException:
+                raise
             except Exception as e:
                 logger.error("Clerk JWT Decode Error: %s", e, exc_info=True)
                 raise HTTPException(status_code=401, detail=f"Invalid Clerk Token: {str(e)}")
@@ -135,7 +140,7 @@ def verify_credentials(request: Request, bearer_creds: HTTPAuthorizationCredenti
         request.state.current_user = user
         return True
     finally:
-        db.close()
+        pass
 
 limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(
@@ -312,8 +317,7 @@ async def check_message(request: Request, body: CheckRequest, db: Session = Depe
         yield f"data: {json.dumps(metadata)}\n\n"
 
         llm_reply = ""
-        api_key = os.getenv("GEMINI_API_KEY", "").strip('"').strip("'")
-        if api_key and real_sess_id:
+        if _gemini_client and real_sess_id:
             history = db.query(ChatMessage).filter(ChatMessage.session_id == real_sess_id).order_by(ChatMessage.created_at).all()
             gemini_history = []
             for msg in history[:-1]:
@@ -321,8 +325,8 @@ async def check_message(request: Request, body: CheckRequest, db: Session = Depe
                 
             try:
             
-                client = genai.Client(api_key=api_key)
-                
+                client = _gemini_client
+
                 system_prompt = (
                     "You are a helpful AI assistant. If you receive a message containing redacted information tags (like [TAX_ID], [PERSON], [EMAIL], etc.), you MUST explicitly acknowledge in your reply that the user's sensitive information was safely redacted for privacy, and provide your best answer based on the context.\n\n"
                     "CRITICAL WRITING STYLE GUIDELINES (HUMANIZE YOUR TONE):\n"
@@ -355,7 +359,7 @@ async def check_message(request: Request, body: CheckRequest, db: Session = Depe
             except Exception as e:
                 yield f"data: {json.dumps({'type': 'error', 'text': f'Error calling Gemini: {str(e)}'})}\n\n"
         else:
-            llm_reply = "I am the pseudo LLM. I received your message securely. (Gemini API key not found in .env)"
+            llm_reply = "I am the pseudo LLM. I received your message securely. (Gemini API key not configured)"
             yield f"data: {json.dumps({'type': 'chunk', 'text': llm_reply})}\n\n"
             
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
@@ -416,15 +420,27 @@ async def preview_message(request: Request, body: CheckRequest, db: Session = De
         redacted_types=redacted_types
     )
 @app.get("/api/v1/sessions", response_model=SessionListResponse)
-def get_sessions(db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
-    sessions = db.query(ChatSession).order_by(ChatSession.created_at.desc()).all()
+def get_sessions(request: Request, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
+    user = request.state.current_user
+    is_base = getattr(request.state, "is_base_user", True)
+    if is_base:
+        sessions = db.query(ChatSession).filter(ChatSession.user_id == user.id).order_by(ChatSession.created_at.desc()).all()
+    else:
+        sessions = db.query(ChatSession).filter(ChatSession.org_id == user.org_id).order_by(ChatSession.created_at.desc()).all()
     return SessionListResponse(
         sessions=[ChatSessionInfo(id=str(s.id), title=s.title, created_at=s.created_at) for s in sessions]
     )
 
 @app.get("/api/v1/sessions/{session_id}", response_model=SessionDetailResponse)
-def get_session(session_id: str, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
-    session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+def get_session(request: Request, session_id: str, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
+    user = request.state.current_user
+    is_base = getattr(request.state, "is_base_user", True)
+    query = db.query(ChatSession).filter(ChatSession.id == session_id)
+    if is_base:
+        query = query.filter(ChatSession.user_id == user.id)
+    else:
+        query = query.filter(ChatSession.org_id == user.org_id)
+    session = query.first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     messages = db.query(ChatMessage).filter(ChatMessage.session_id == session_id).order_by(ChatMessage.created_at).all()
@@ -446,8 +462,15 @@ def get_session(session_id: str, db: Session = Depends(get_db), _: bool = Depend
     )
 
 @app.delete("/api/v1/sessions/{session_id}")
-def delete_session(session_id: str, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
-    session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+def delete_session(request: Request, session_id: str, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
+    user = request.state.current_user
+    is_base = getattr(request.state, "is_base_user", True)
+    query = db.query(ChatSession).filter(ChatSession.id == session_id)
+    if is_base:
+        query = query.filter(ChatSession.user_id == user.id)
+    else:
+        query = query.filter(ChatSession.org_id == user.org_id)
+    session = query.first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     db.query(ChatMessage).filter(ChatMessage.session_id == session_id).delete()
@@ -464,12 +487,12 @@ class BlockedMessageSave(_BaseModel):
     model_explanation: Optional[str] = None
 
 @app.post("/api/v1/sessions/save-blocked")
-def save_blocked_message(body: BlockedMessageSave, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
-    """Save a blocked message to the DB so it appears when the session is restored."""
+def save_blocked_message(request: Request, body: BlockedMessageSave, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
+    user = request.state.current_user
     db_sess = db.query(ChatSession).filter(ChatSession.id == body.session_id).first()
     if not db_sess:
         title = body.message[:30] + "..." if len(body.message) > 30 else body.message
-        db_sess = ChatSession(id=body.session_id, title=title)
+        db_sess = ChatSession(id=body.session_id, user_id=user.id, org_id=user.org_id, title=title)
         db.add(db_sess)
         db.commit()
     blocked_msg = ChatMessage(session_id=body.session_id, role="blocked", content=body.message)
@@ -484,44 +507,37 @@ from app.models import BatchCheckRequest, BatchCheckResponse, CheckResult, Block
 
 @app.post("/api/v1/check_batch", response_model=BatchCheckResponse)
 @limiter.limit("10/minute")
-def check_message_batch(request: Request, body: BatchCheckRequest, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
+async def check_message_batch(request: Request, body: BatchCheckRequest, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
     user = request.state.current_user
     tier_config, custom_labels = get_tier_config_helper(db, user)
 
+    pipeline_results = await asyncio.gather(*[
+        asyncio.to_thread(pipeline.run, msg, body.allowed_pii, [], tier_config, custom_labels)
+        for msg in body.messages
+    ])
+
+    block_set = tier_config["block"] if tier_config else TIER_BLOCK
     results = []
-    for msg in body.messages:
-        processed_text, detections, action = pipeline.run(msg, body.allowed_pii, [], tier_config, custom_labels)
-        
-        detected_types_list = [d.type for d in detections]
-        flagged_sequences_list = [msg[d.start:d.end] for d in detections]
-        stat_log = StatLog(
+    for msg, (processed_text, detections, action) in zip(body.messages, pipeline_results):
+        db.add(StatLog(
             user_id=user.id,
             org_id=user.org_id,
             session_id=None,
             action=action,
-            detected_types=json.dumps(detected_types_list),
-            flagged_sequences=json.dumps(flagged_sequences_list),
+            detected_types=json.dumps([d.type for d in detections]),
+            flagged_sequences=json.dumps([msg[d.start:d.end] for d in detections]),
             original_message=msg if action in ["BLOCK", "REDACT"] else None
-        )
-        db.add(stat_log)
-        db.commit()
-        
+        ))
         redacted_types = [
             RedactedType(type=d.type, subtype=d.subtype, confidence=d.confidence)
             for d in detections
         ]
-        
         if action == "BLOCK":
-            block_set = tier_config["block"] if tier_config else TIER_BLOCK
-            blocked_types = [d.type for d in detections if d.type in block_set]
-            primary_type = blocked_types[0] if blocked_types else "code"
-            
-            blocked_redacted_types = [rt for rt in redacted_types if rt.type in block_set]
-            
+            blocked = [d.type for d in detections if d.type in block_set]
             results.append(BlockResult(
                 action="BLOCK",
-                warning=get_block_warning(primary_type),
-                blocked_types=blocked_redacted_types
+                warning=get_block_warning(blocked[0] if blocked else "code"),
+                blocked_types=[rt for rt in redacted_types if rt.type in block_set]
             ))
         else:
             results.append(CheckResult(
@@ -530,7 +546,7 @@ def check_message_batch(request: Request, body: BatchCheckRequest, db: Session =
                 message=processed_text,
                 redacted_types=redacted_types
             ))
-            
+    db.commit()
     return BatchCheckResponse(results=results)
 @app.get("/api/v1/health")
 def health():
@@ -815,11 +831,9 @@ def create_custom_label(request: Request, label: CustomLabelCreate, db: Session 
     dump_data = label.model_dump()
     dump_data["dictionary_words"] = json.dumps(dump_data.get("dictionary_words", []))
     
-    # Generate Regex using Gemini (if api key is present)
-    api_key = os.getenv("GEMINI_API_KEY", "").strip('"').strip("'")
-    if api_key:
+    if _gemini_client:
         try:
-            client = genai.Client(api_key=api_key)
+            client = _gemini_client
             words_context = ""
             if label.dictionary_words:
                 words_context = f" Examples to match: {', '.join(label.dictionary_words)}."
@@ -1043,8 +1057,7 @@ async def import_custom_labels_xlsx_preview(request: Request, file: UploadFile =
     current_user = request.state.current_user
     is_base_user = getattr(request.state, "is_base_user", True)
     
-    api_key = os.getenv("GEMINI_API_KEY", "").strip('"').strip("'")
-    client = genai.Client(api_key=api_key) if api_key else None
+    client = _gemini_client
     
     results = []
     
@@ -1111,8 +1124,7 @@ def import_custom_labels_xlsx_confirm(request: Request, payload: ImportConfirmPa
     current_user = request.state.current_user
     is_base_user = getattr(request.state, "is_base_user", True)
     
-    api_key = os.getenv("GEMINI_API_KEY", "").strip('"').strip("'")
-    client = genai.Client(api_key=api_key) if api_key else None
+    client = _gemini_client
     
     imported_count = 0
     for item in payload.items:

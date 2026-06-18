@@ -44,6 +44,11 @@ _PATTERNS: List[_Pattern] = [
     _Pattern("fake_cc",         "credit_card", re.compile(r"\b(?:\d{4}[-\s]?){3}\d{4}\b|\b\d{15,16}\b"), confidence="high"),
     _Pattern("spelled_numbers", "ssn",         re.compile(r"(?:(?:zero|one|two|three|four|five|six|seven|eight|nine)[\s\-,]*){9,}"), confidence="high"),
     _Pattern("spelled_date",    "date_time",   re.compile(r"(?i)\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(?:two|twenty|nineteen)\s+[a-z]+\s*[a-z]*\b"), confidence="medium"),
+    # ponytail: backfill for Presidio removal — 3 entity types that were only covered by Presidio
+    _Pattern("crypto_btc",      "crypto",      re.compile(r"\b(?:1[a-km-zA-HJ-NP-Z1-9]{25,34}|3[a-km-zA-HJ-NP-Z1-9]{25,34}|bc1[a-zA-HJ-NP-Z0-9]{25,90})\b"), confidence="high"),
+    _Pattern("crypto_eth",      "crypto",      re.compile(r"\b0x[0-9a-fA-F]{40}\b"), confidence="high"),
+    _Pattern("us_bank_routing", "bank",        re.compile(r"(?i)(?:routing|aba|transit)\s*(?:number|num|no|#)?\s*[:=]?\s*([0-9]{9})\b"), confidence="high"),
+    _Pattern("uk_nhs",          "nhs",         re.compile(r"(?i)(?:nhs|national\s*health)\s*(?:number|num|no|#)?\s*[:=]?\s*(\d{3}\s?\d{3}\s?\d{4})\b"), confidence="high"),
 ]
 
 
@@ -67,8 +72,14 @@ def detect(text: str) -> List[Detection]:
             elif p.name in ["aadhar", "pan_card", "voter_id"]:
                 det_type = "tax ID"
             elif p.name == "upi_id":
-                det_type = "email"  
-            
+                det_type = "email"
+            elif p.name in ["crypto_btc", "crypto_eth"]:
+                det_type = "crypto wallet"
+            elif p.name == "us_bank_routing":
+                det_type = "US bank number"
+            elif p.name == "uk_nhs":
+                det_type = "UK NHS number"
+
             detections.append(Detection(
                 start=m.start(),
                 end=m.end(),

@@ -5,8 +5,17 @@ from app.config import TIER_BLOCK, TIER_REDACT, TIER_AUDIT, get_block_warning
 import requests
 import os
 import logging
+import functools
+import json
 
 logger = logging.getLogger(__name__)
+
+@functools.lru_cache(maxsize=256)
+def _hf_detect(url: str, text: str) -> str:
+    res = requests.post(url + "/detect", json={"text": text}, timeout=10)
+    if res.status_code != 200:
+        raise RuntimeError(f"HF {res.status_code}")
+    return res.text
 def _get_priority(type_str: str, tier_config: dict = None) -> int:
     if tier_config is None:
         from app.config import TIER_BLOCK, TIER_REDACT
@@ -100,7 +109,6 @@ def run(text: str, allowed_pii: List[str] = None, ignored_values: List[str] = No
     all_detections.extend(luhn_stage.detect(text))
     all_detections.extend(entropy_stage.detect(text))
     
-    import json
     import re
     for cl in custom_labels:
         if cl.regex_pattern:
@@ -114,7 +122,7 @@ def run(text: str, allowed_pii: List[str] = None, ignored_values: List[str] = No
                         confidence="high",
                         engine="custom"
                     ))
-            except: pass
+            except Exception: pass
             
         if cl.dictionary_words:
             try:
@@ -136,56 +144,44 @@ def run(text: str, allowed_pii: List[str] = None, ignored_values: List[str] = No
                             engine="custom"
                         ))
                         start += len(w_lower)
-            except: pass
+            except Exception: pass
     
     if tier_config is None:
         from app.config import TIER_BLOCK, TIER_REDACT, TIER_AUDIT
         gliner_labels = list(TIER_BLOCK | TIER_REDACT | TIER_AUDIT)
     else:
         gliner_labels = list(set(tier_config.get("block", [])) | set(tier_config.get("redact", [])) | set(tier_config.get("audit", [])))
-            
-    from app.pipeline.semantic_stage import is_benign_context
-    use_semantic_filter = os.getenv("USE_SEMANTIC_FILTER", "True").lower() == "true"
-    
-    if use_semantic_filter and is_benign_context(text):
-        logger.info("Semantic filter matched benign context. Bypassing GLiNER.")
-    else:
-        hf_space_url = os.getenv("HF_SPACE_URL")
-        hf_success = False
-        if hf_space_url:
-            import time
-            max_retries = 3
-            for attempt in range(max_retries):
-                try:
-                    url = hf_space_url.rstrip("/") + "/detect"
-                    res = requests.post(url, json={"text": text}, timeout=120)
-                    if res.status_code == 200:
-                        data = res.json().get("detections", [])
-                        for d in data:
-                            all_detections.append(
-                                Detection(
-                                    start=d["start"],
-                                    end=d["end"],
-                                    type=d["type"],
-                                    subtype=d["subtype"],
-                                    confidence=d["confidence"],
-                                    engine="hf"
-                                )
-                            )
-                        hf_success = True
-                        break
-                    elif res.status_code == 503:
-                        logger.warning(f"HF Space is likely waking up (503). Retrying in 10s... (Attempt {attempt+1}/{max_retries})")
-                        time.sleep(10)
-                    else:
-                        logger.error(f"HF API returned {res.status_code}: {res.text}")
-                        break
-                except Exception as e:
-                    logger.error(f"Failed to call HF Space (Attempt {attempt+1}/{max_retries}): {e}")
-                    time.sleep(5)
-                
-        if not hf_success:
-            logger.warning("HF API failed and local fallback is disabled by policy. Using regex/rules only.")
+
+    # ponytail: skip HF entirely if local stages already found a BLOCK-tier type — saves 2-10s per blocked message
+    _quick_block = TIER_BLOCK if tier_config is None else tier_config.get("block", set())
+    if any(d.type in _quick_block for d in all_detections):
+        merged = _merge_spans(all_detections, tier_config)
+        filtered = [d for d in merged if d.type in _quick_block]
+        return "", filtered, "BLOCK"
+
+    # ponytail: semantic pre-filter removed — /embeddings endpoint dropped from HF Space
+    hf_space_url = os.getenv("HF_SPACE_URL")
+    hf_success = False
+    if hf_space_url and len(text) >= 40:
+        import time
+        for attempt in range(2):
+            try:
+                data = json.loads(_hf_detect(hf_space_url.rstrip("/"), text)).get("detections", [])
+                for d in data:
+                    all_detections.append(Detection(
+                        start=d["start"], end=d["end"],
+                        type=d["type"], subtype=d["subtype"],
+                        confidence=d["confidence"], engine="hf"
+                    ))
+                hf_success = True
+                break
+            except Exception as e:
+                logger.warning(f"HF Space unavailable (attempt {attempt+1}/2): {e}")
+                if attempt == 0:
+                    time.sleep(3)
+
+    if not hf_success:
+        logger.warning("HF API unavailable. Using regex/rules only.")
 
 
     merged = _merge_spans(all_detections, tier_config)
