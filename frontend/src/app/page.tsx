@@ -26,6 +26,8 @@ type Message = {
   status?: 'sending' | 'clear' | 'redacted' | 'blocked' | 'error';
   redactedTypes?: RedactedType[];
   ignoredValues?: string[];
+  fileName?: string;
+  pendingUserMessage?: string;
 };
 
 type SessionInfo = {
@@ -418,28 +420,25 @@ export default function ChatPage() {
         return;
       }
 
-      const CHUNK_LIMIT = 100000;
-      const MAX_CHUNKS = 5;
-      
       setIsLoading(false);
-      
-      if (data.message.length > CHUNK_LIMIT) {
-        const chunks = [];
-        for (let i = 0; i < data.message.length; i += CHUNK_LIMIT) {
-          chunks.push(data.message.substring(i, i + CHUNK_LIMIT));
-          if (chunks.length === MAX_CHUNKS) break;
-        }
-        for (let i = 0; i < chunks.length; i++) {
-          const docText = `[Document: ${file.name} (Part ${i + 1}/${chunks.length})]\n${chunks[i]}`;
-          await executeLLM(docText, allowedPII);
-        }
-        if (userMessage.trim()) {
-           await executeLLM(userMessage.trim(), allowedPII);
-        }
-      } else {
+
+      if (data.action === 'CLEAN' || !data.redacted_types?.length) {
+        // No PII — send straight through like text CLEAN path
         const docText = `[Document: ${file.name}]\n${data.message}` + (userMessage.trim() ? `\n\n${userMessage.trim()}` : '');
         await executeLLM(docText, allowedPII);
+        return;
       }
+
+      // REDACT/AUDIT — show preview with redaction summary before sending
+      setMessages(prev => [...prev, {
+        id: crypto.randomUUID(),
+        role: 'preview',
+        content: data.message,
+        originalContent: data.message,
+        redactedTypes: data.redacted_types,
+        fileName: file.name,
+        pendingUserMessage: userMessage
+      }]);
     } catch (err) {
       console.error(err);
       setIsLoading(false);
@@ -911,23 +910,93 @@ export default function ChatPage() {
                         <p className="text-xs font-bold text-primary mb-2 uppercase tracking-wider flex items-center gap-1">
                           <ShieldAlert size={14} /> Preview Before Sending
                         </p>
-                        <div className="text-[15px] leading-relaxed mb-4">
-                           {renderMessageContent(msg.id, msg.content, msg.redactedTypes, msg.role)}
-                        </div>
+
+                        {msg.fileName ? (
+                          // Document preview — compact redaction list
+                          <div className="mb-4">
+                            <div className="flex items-center gap-2 mb-3 pb-3 border-b border-border">
+                              <Paperclip size={13} className="text-muted-foreground shrink-0" />
+                              <span className="text-sm font-medium truncate">{msg.fileName}</span>
+                            </div>
+                            {msg.redactedTypes && msg.redactedTypes.length > 0 ? (
+                              <div className="space-y-2">
+                                <p className="text-xs text-muted-foreground">The following PII will be redacted before sending:</p>
+                                {(() => {
+                                  // Deduplicate by type+value, track count
+                                  const seen = new Map<string, { rt: RedactedType; count: number }>();
+                                  for (const rt of msg.redactedTypes!) {
+                                    const key = `${rt.type}::${rt.value}`;
+                                    const existing = seen.get(key);
+                                    existing ? existing.count++ : seen.set(key, { rt, count: 1 });
+                                  }
+                                  const unique = Array.from(seen.values());
+                                  return unique.map(({ rt, count }, i) => (
+                                    <div key={i} className="flex items-center gap-2 text-sm">
+                                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-mono bg-amber-50 text-amber-700 border border-amber-200 shrink-0">
+                                        {rt.type.toUpperCase().replace(/ /g, '_')}
+                                      </span>
+                                      <span className="text-muted-foreground text-xs truncate max-w-[200px]" title={rt.value}>
+                                        "{rt.value}"
+                                      </span>
+                                      {count > 1 && (
+                                        <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5 shrink-0">
+                                          ×{count}
+                                        </span>
+                                      )}
+                                    </div>
+                                  ));
+                                })()}
+                              </div>
+                            ) : (
+                              <p className="text-sm text-muted-foreground">No PII detected — document is clean.</p>
+                            )}
+                          </div>
+                        ) : (
+                          // Text preview — inline [TYPE] tags
+                          <div className="text-[15px] leading-relaxed mb-4">
+                            {renderMessageContent(msg.id, msg.content, msg.redactedTypes, msg.role)}
+                          </div>
+                        )}
+
                         <div className="flex justify-end gap-2">
-                          <button 
+                          <button
                             onClick={() => {
                               setMessages(prev => prev.filter(m => m.id !== msg.id));
-                              setInput(msg.originalContent || '');
+                              if (!msg.fileName) setInput(msg.originalContent || '');
                             }}
                             className="px-4 py-2 text-sm font-medium text-foreground hover:bg-background rounded-lg transition-colors border border-transparent hover:border-border"
                           >
                             Cancel
                           </button>
-                          <button 
+                          <button
                             onClick={() => {
                               setMessages(prev => prev.filter(m => m.id !== msg.id));
-                              executeLLM(msg.content, msg.ignoredValues || [], true);
+                              if (msg.fileName) {
+                                // Document approve — run chunking path
+                                const CHUNK_LIMIT = 100000;
+                                const MAX_CHUNKS = 5;
+                                const docContent = msg.content;
+                                const fileName = msg.fileName;
+                                const pendingMsg = msg.pendingUserMessage || '';
+                                if (docContent.length > CHUNK_LIMIT) {
+                                  const chunks: string[] = [];
+                                  for (let i = 0; i < docContent.length; i += CHUNK_LIMIT) {
+                                    chunks.push(docContent.substring(i, i + CHUNK_LIMIT));
+                                    if (chunks.length === MAX_CHUNKS) break;
+                                  }
+                                  (async () => {
+                                    for (let i = 0; i < chunks.length; i++) {
+                                      await executeLLM(`[Document: ${fileName} (Part ${i+1}/${chunks.length})]\n${chunks[i]}`, [], true);
+                                    }
+                                    if (pendingMsg.trim()) await executeLLM(pendingMsg.trim(), [], false);
+                                  })();
+                                } else {
+                                  const docText = `[Document: ${fileName}]\n${docContent}` + (pendingMsg.trim() ? `\n\n${pendingMsg.trim()}` : '');
+                                  executeLLM(docText, [], true);
+                                }
+                              } else {
+                                executeLLM(msg.content, msg.ignoredValues || [], true);
+                              }
                             }}
                             className="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 rounded-lg flex items-center gap-2 transition-opacity"
                           >
