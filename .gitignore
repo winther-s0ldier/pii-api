@@ -54,3 +54,5 @@ seed_enterprise.py
 # SQLite (prod uses Postgres via DATABASE_URL)
 db.sqlite
 pi-api.db
+
+.pem
