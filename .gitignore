@@ -55,4 +55,4 @@ seed_enterprise.py
 db.sqlite
 pi-api.db
 
-.pem
+*.pem
