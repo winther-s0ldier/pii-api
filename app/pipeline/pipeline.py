@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 @functools.lru_cache(maxsize=256)
 def _hf_detect(url: str, text: str) -> str:
-    res = requests.post(url + "/detect", json={"text": text}, timeout=10)
+    res = requests.post(url + "/detect", json={"text": text}, timeout=30)
     if res.status_code != 200:
         raise RuntimeError(f"HF {res.status_code}")
     return res.text
