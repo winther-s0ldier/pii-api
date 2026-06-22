@@ -339,7 +339,7 @@ async def check_message(request: Request, body: CheckRequest, db: Session = Depe
                 )
                 
                 chat = client.aio.chats.create(
-                    model="gemini-3.5-flash", 
+                    model="gemini-2.5-flash",
                     history=gemini_history,
                     config=types.GenerateContentConfig(
                         tools=[{"google_search": {}}],
