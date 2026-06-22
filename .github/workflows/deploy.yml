@@ -1,0 +1,23 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_KEY }}
+          script: |
+            cd /home/ubuntu/pii-api
+            git pull origin main
+            source venv/bin/activate
+            TMPDIR=/home/ubuntu/pip-tmp pip install -r requirements.txt --quiet
+            sudo systemctl restart pi-api
+            sudo systemctl status pi-api --no-pager
