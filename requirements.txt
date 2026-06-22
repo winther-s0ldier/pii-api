@@ -12,3 +12,7 @@ psycopg2-binary
 clerk-backend-api
 PyJWT[crypto]
 passlib[bcrypt]
+python-dotenv
+easyocr
+pymupdf
+torch
