@@ -3,7 +3,7 @@ from typing import List
 
 from app.pipeline.base import Detection
 
-_DIGIT_SEQ_RE = re.compile(r"\b\d[\d\s\-]{11,17}\d\b")
+_DIGIT_SEQ_RE = re.compile(r"\b(?:\d{4}[-\s]){3}\d{4}\b|\b(?:4\d{15}|5[1-5]\d{14}|3[47]\d{13}|6(?:011|5\d{2})\d{12})\b")
 
 
 def _luhn_valid(number: str) -> bool:

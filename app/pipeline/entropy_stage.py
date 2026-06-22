@@ -35,6 +35,6 @@ def detect(text: str) -> List[Detection]:
         if entropy >= threshold:
             detections.append(Detection(
                 start=m.start(), end=m.end(),
-                type="private_key", subtype="entropy", confidence="high",
+                type="secret", subtype="entropy", confidence="high",
             ))
     return detections
