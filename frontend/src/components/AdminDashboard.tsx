@@ -45,7 +45,7 @@ export default function AdminDashboard() {
   // ponytail: set configUserId dynamically based on role type
   useEffect(() => {
     if (isLoaded) {
-      setConfigUserId(!orgId ? 'me' : 'default_user');
+      setConfigUserId(!orgId ? 'me' : '');
     }
   }, [isLoaded, orgId]);
 
@@ -312,7 +312,7 @@ export default function AdminDashboard() {
                   onChange={e => setConfigUserId(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleSearchUser()}
                   className="px-3 py-2 text-[14px] bg-[#FAFAFA] border border-[#EAEAEA] rounded-md focus:bg-white focus:border-[#999] focus:ring-0 outline-none transition-all placeholder:text-[#BBBBBB] w-full md:w-64"
-                  placeholder="Enter User ID (e.g. default_user)"
+                  placeholder="Search by email or username"
                 />
                 <button 
                   onClick={handleSearchUser}

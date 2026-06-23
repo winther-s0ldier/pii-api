@@ -114,7 +114,7 @@ def verify_credentials(request: Request, bearer_creds: HTTPAuthorizationCredenti
                         user.role = "admin" if data.get("org_role") == "org:admin" else "employee"
                         user.rate_limit_per_day = None
                     db.commit()
-                user.is_base_user = (clerk_org_id is None)
+                user.is_base_user = (user.org_id is None)
                 request.state.clerk_org_id = clerk_org_id
                 request.state.clerk_user_id = clerk_id
                 if getattr(user, 'is_blocked', False):
@@ -349,14 +349,16 @@ async def check_message(request: Request, body: CheckRequest, db: Session = Depe
                 )
                 
                 chat = client.aio.chats.create(
-                    model="gemini-3.1-pro-preview",
+                    model="gemini-3.5-flash",
                     history=gemini_history,
                     config=types.GenerateContentConfig(
                         tools=[{"google_search": {}}],
                         system_instruction=system_prompt
                     )
                 )
-                response_stream = await chat.send_message_stream(processed_text)
+                response_stream = await asyncio.wait_for(
+                    chat.send_message_stream(processed_text), timeout=45
+                )
                 async for chunk in response_stream:
                     if chunk.text:
                         llm_reply += chunk.text
@@ -366,6 +368,8 @@ async def check_message(request: Request, body: CheckRequest, db: Session = Depe
                     model_msg = ChatMessage(session_id=real_sess_id, role="model", content=llm_reply)
                     db.add(model_msg)
                     db.commit()
+            except asyncio.TimeoutError:
+                yield f"data: {json.dumps({'type': 'error', 'text': 'Request timed out. Please try again.'})}\n\n"
             except Exception as e:
                 yield f"data: {json.dumps({'type': 'error', 'text': f'Error calling Gemini: {str(e)}'})}\n\n"
         else:
@@ -848,7 +852,7 @@ def create_custom_label(request: Request, label: CustomLabelCreate, db: Session 
                 words_context = f" Examples to match: {', '.join(label.dictionary_words)}."
             prompt = f"Generate ONLY a python regex string to match the PII entity '{label.name}'. Description: '{label.description}'.{words_context} Do not include markdown blocks, slashes, or explanations. Just the raw regex pattern. Make it strict to avoid false positives."
             response = client.models.generate_content(
-                model='gemini-3.1-pro-preview',
+                model='gemini-3.5-flash',
                 contents=prompt,
             )
             dump_data["regex_pattern"] = response.text.strip().strip('`').strip()
@@ -1095,7 +1099,7 @@ async def import_custom_labels_xlsx_preview(request: Request, file: UploadFile =
                 try:
                     prompt = f"Assign a tier for the PII entity '{name}'. Description: '{description}'. You MUST choose one of: tier_block, tier_redact, tier_audit."
                     response = client.models.generate_content(
-                        model='gemini-3.1-pro-preview',
+                        model='gemini-3.5-flash',
                         contents=prompt,
                         config=types.GenerateContentConfig(
                             response_mime_type="application/json",
@@ -1157,7 +1161,7 @@ def import_custom_labels_xlsx_confirm(request: Request, payload: ImportConfirmPa
                 try:
                     prompt = f"Generate ONLY a python regex string to match the PII entity '{name}'. Description: '{description}'. Do not include markdown blocks, slashes, or explanations. Just the raw regex pattern."
                     response = client.models.generate_content(
-                        model='gemini-3.1-pro-preview',
+                        model='gemini-3.5-flash',
                         contents=prompt,
                     )
                     regex_pattern = response.text.strip()
