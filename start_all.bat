@@ -9,8 +9,8 @@ docker rm -f pii_ml_api >nul 2>&1
 docker run -d --name pii_ml_api -p 7860:7860 pii_ml_api:latest
 
 echo.
-echo [2/3] Starting FastAPI Backend on Port 8000...
-start cmd /k "cd /d %~dp0 && call .\venv\Scripts\activate.bat && uvicorn app.main:app --host 127.0.0.1 --reload --reload-dir app > uvicorn.log 2>&1"
+echo [2/3] Starting FastAPI Backend on Port 8001...
+start cmd /k "cd /d %~dp0 && call .\venv\Scripts\activate.bat && uvicorn app.main:app --host 127.0.0.1 --port 8001 --reload --reload-dir app"
 
 echo.
 echo [3/3] Starting Main App (Chat ^& Admin) on Port 3000...
@@ -21,7 +21,7 @@ echo ========================================================
 echo All servers are starting in separate windows.
 echo - Chat UI: http://localhost:3000
 echo - Admin UI: http://localhost:3000/admin
-echo - API Docs: http://localhost:8000/docs
+echo - API Docs: http://localhost:8001/docs
 echo - ML API Docs: http://localhost:7860/docs
 echo ========================================================
 pause

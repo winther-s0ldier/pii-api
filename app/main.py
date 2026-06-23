@@ -93,8 +93,7 @@ def verify_credentials(request: Request, bearer_creds: HTTPAuthorizationCredenti
                         )
                         db.add(org)
                 else:
-                    # Fallback if the user hasn't selected an organization in Clerk
-                    org = db.query(Organization).first()
+                    org = None
 
                 user = db.query(User).filter(User.email == clerk_id).first()
                 if not user:
@@ -110,8 +109,14 @@ def verify_credentials(request: Request, bearer_creds: HTTPAuthorizationCredenti
                     db.commit()
                     db.refresh(user)
                 else:
+                    if clerk_org_id and org and user.org_id != org.id:
+                        user.org_id = org.id
+                        user.role = "admin" if data.get("org_role") == "org:admin" else "employee"
+                        user.rate_limit_per_day = None
                     db.commit()
                 user.is_base_user = (clerk_org_id is None)
+                request.state.clerk_org_id = clerk_org_id
+                request.state.clerk_user_id = clerk_id
                 if getattr(user, 'is_blocked', False):
                     raise HTTPException(status_code=403, detail="Account suspended")
             except HTTPException:
@@ -1242,15 +1247,15 @@ async def upload_document(
         block_set = tier_config["block"] if tier_config else TIER_BLOCK
         blocked_types = [d.type for d in detections if d.type in block_set]
         primary_type = blocked_types[0] if blocked_types else "code"
-        
+
         blocked_redacted_types = [rt for rt in redacted_types if rt.type in block_set]
-        
+
         return BlockResult(
             action="BLOCK",
             warning=get_block_warning(primary_type),
             blocked_types=blocked_redacted_types
         )
-    
+
     return CheckResult(
         action=action,
         was_redacted=(action == "REDACT"),
@@ -1258,3 +1263,59 @@ async def upload_document(
         redacted_types=redacted_types
     )
 
+
+@app.post("/api/v1/admin/invite/bulk")
+async def bulk_invite(
+    request: Request,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_credentials),
+):
+    import csv, io
+    from clerk_backend_api import Clerk
+    from clerk_backend_api.models import CreateOrganizationInvitationBulkRequestBody
+
+    clerk_org_id = getattr(request.state, "clerk_org_id", None)
+    clerk_user_id = getattr(request.state, "clerk_user_id", None)
+    if not clerk_org_id:
+        raise HTTPException(status_code=400, detail="No active organization in session")
+
+    content = (await file.read()).decode("utf-8-sig")
+    reader = csv.reader(io.StringIO(content))
+    emails = []
+    for i, row in enumerate(reader):
+        if not row:
+            continue
+        val = row[0].strip()
+        if i == 0 and ("email" in val.lower() or "@" not in val):
+            continue  # skip header row
+        if "@" in val:
+            emails.append(val.lower())
+
+    if not emails:
+        raise HTTPException(status_code=400, detail="No valid email addresses found in CSV")
+
+    clerk = Clerk(bearer_auth=os.getenv("CLERK_SECRET_KEY"))
+    sent, failed = [], []
+
+    for i in range(0, len(emails), 10):
+        batch = emails[i:i + 10]
+        try:
+            clerk.organization_invitations.bulk_create(
+                organization_id=clerk_org_id,
+                request_body=[
+                    CreateOrganizationInvitationBulkRequestBody(
+                        email_address=email,
+                        role="org:member",
+                        inviter_user_id=clerk_user_id,
+                        redirect_url="https://chat.adopshun.com",
+                    )
+                    for email in batch
+                ],
+            )
+            sent.extend(batch)
+        except Exception as e:
+            logger.warning("Bulk invite batch failed: %s", e)
+            failed.extend(batch)
+
+    return {"sent": sent, "failed": failed, "total": len(emails)}
