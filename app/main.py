@@ -150,9 +150,13 @@ app = FastAPI(
 
 from fastapi.middleware.cors import CORSMiddleware
 
+_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,https://pii-api-mu.vercel.app").split(",")
+if "https://chat.adopshun.com" not in _origins:
+    _origins.append("https://chat.adopshun.com")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,https://pii-api-mu.vercel.app").split(","),
+    allow_origins=_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -211,6 +215,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     response = JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
     origin = request.headers.get("origin")
     allowed_origins = set(os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(","))
+    allowed_origins.add("https://chat.adopshun.com")
     if origin and origin in allowed_origins:
         response.headers["Access-Control-Allow-Origin"] = origin
     response.headers["Access-Control-Allow-Credentials"] = "true"
