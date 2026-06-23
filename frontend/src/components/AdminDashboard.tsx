@@ -351,28 +351,21 @@ export default function AdminDashboard() {
                           const q = configUserId.toLowerCase();
                           return !q || u.email.toLowerCase().includes(q) || u.employee_id.toLowerCase().includes(q);
                         })
-                        .map(u => {
-                          const display = u.employee_id || u.email;
-                          const sub = u.employee_id ? u.email : '';
-                          return (
+                        .map(u => (
                             <button
                               key={u.id}
-                              onMouseDown={e => { e.preventDefault(); setConfigUserId(u.employee_id || u.email); setShowUserDropdown(false); }}
+                              onMouseDown={e => { e.preventDefault(); setConfigUserId(u.email); setShowUserDropdown(false); }}
                               className="w-full text-left px-3 py-2 hover:bg-[#F5F5F5] transition-colors border-b border-[#F5F5F5] last:border-0"
                             >
                               <div className="flex items-center justify-between gap-2">
-                                <div>
-                                  <div className="text-[13px] font-medium text-[#111111] truncate">{display}</div>
-                                  {sub && <div className="text-[11px] text-[#999] truncate">{sub}</div>}
-                                </div>
+                                <div className="text-[13px] font-medium text-[#111111] truncate">{u.email}</div>
                                 <div className="flex items-center gap-1 shrink-0">
-                                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${u.role === 'admin' ? 'bg-[#111] text-white' : 'bg-[#F0F0F0] text-[#555]'}`}>{u.role}</span>
+                                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${u.role === 'admin' || u.role === 'super_admin' ? 'bg-[#111] text-white' : 'bg-[#F0F0F0] text-[#555]'}`}>{u.role}</span>
                                   {u.is_blocked && <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-600 font-medium">blocked</span>}
                                 </div>
                               </div>
                             </button>
-                          );
-                        })}
+                          ))}
                     </div>
                   )}
                 </div>

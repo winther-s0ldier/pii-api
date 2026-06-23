@@ -95,11 +95,15 @@ def verify_credentials(request: Request, bearer_creds: HTTPAuthorizationCredenti
                 else:
                     org = None
 
+                # Clerk JWT may include email if configured in the JWT template
+                clerk_email = data.get("email") or data.get("email_address") or ""
+
                 user = db.query(User).filter(User.email == clerk_id).first()
                 if not user:
                     user = User(
                         org_id=org.id if org else None,
                         email=clerk_id,
+                        employee_id=clerk_email or None,
                         role="admin" if data.get("org_role") == "org:admin" or not clerk_org_id else "employee",
                         password_hash="clerk_managed",
                         is_active=True,
@@ -113,6 +117,8 @@ def verify_credentials(request: Request, bearer_creds: HTTPAuthorizationCredenti
                         user.org_id = org.id
                         user.role = "admin" if data.get("org_role") == "org:admin" else "employee"
                         user.rate_limit_per_day = None
+                    if clerk_email and not user.employee_id:
+                        user.employee_id = clerk_email
                     db.commit()
                 user.is_base_user = (user.org_id is None)
                 request.state.clerk_org_id = clerk_org_id
@@ -764,17 +770,26 @@ def list_org_users(request: Request, db: Session = Depends(get_db), _: bool = De
     is_base_user = getattr(request.state, "is_base_user", True)
     if is_base_user:
         return []
-    users = db.query(User).filter(User.org_id == current_user.org_id, User.is_active == True).order_by(User.created_at).all()
-    return [
-        {
+    users = db.query(User).filter(
+        User.org_id == current_user.org_id,
+        User.is_active == True,
+        # Exclude Clerk user IDs stored as email (they look like "user_xxx", not real emails)
+        User.email.contains('@') | User.employee_id.isnot(None)
+    ).order_by(User.created_at).all()
+    result = []
+    for u in users:
+        # employee_id holds the real email when Clerk JWT provides it; fall back to email column
+        display_email = u.employee_id if (u.employee_id and '@' in u.employee_id) else (u.email if '@' in (u.email or '') else None)
+        if not display_email:
+            continue
+        result.append({
             "id": str(u.id),
-            "email": u.email or "",
+            "email": display_email,
             "employee_id": u.employee_id or "",
             "role": u.role,
             "is_blocked": u.is_blocked,
-        }
-        for u in users
-    ]
+        })
+    return result
 
 @app.get("/api/v1/admin/stats", response_model=StatsResponse)
 def get_global_stats(request: Request, start_time: Optional[datetime] = None, end_time: Optional[datetime] = None, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
