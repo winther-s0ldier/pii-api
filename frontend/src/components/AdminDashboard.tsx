@@ -23,6 +23,8 @@ const TIME_WINDOWS = [
 
 type CustomLabel = { id: number; name: string; description: string; tier: string; created_at: string };
 
+type OrgUser = { id: string; email: string; employee_id: string; role: string; is_blocked: boolean };
+
 export default function AdminDashboard() {
   const { getToken, orgId, isLoaded } = useAuth();
   const [stats, setStats] = useState<StatsResponse | null>(null);
@@ -35,7 +37,10 @@ export default function AdminDashboard() {
   const [isSaving, setIsSaving] = useState(false);
   const [globalTimeWindow, setGlobalTimeWindow] = useState(0);
   const [userTimeWindow, setUserTimeWindow] = useState(0);
-  
+  const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
+  const searchRef = React.useRef<HTMLDivElement>(null);
+
   // State to track which sequences are unmasked
   const [unmaskedSequences, setUnmaskedSequences] = useState<Record<string, boolean>>({});
 
@@ -46,12 +51,24 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (isLoaded) {
       setConfigUserId(!orgId ? 'me' : '');
+      if (orgId) fetchOrgUsers();
     }
   }, [isLoaded, orgId]);
 
   // Auth is handled by the admin layout — mark as authenticated on mount
   useEffect(() => {
     setIsAuthenticated(true);
+  }, []);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setShowUserDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
   }, []);
 
   useEffect(() => {
@@ -153,6 +170,17 @@ export default function AdminDashboard() {
         headers: { 'Authorization': `Bearer ${await getToken()}` }
       });
       if (res.ok) fetchCustomLabels();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const fetchOrgUsers = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/admin/users`, {
+        headers: { 'Authorization': `Bearer ${await getToken()}` }
+      });
+      if (res.ok) setOrgUsers(await res.json());
     } catch (e) {
       console.error(e);
     }
@@ -306,16 +334,50 @@ export default function AdminDashboard() {
             </h2>
             {orgId && (
               <div className="flex flex-col md:flex-row gap-3">
-                <input 
-                  type="text" 
-                  value={configUserId} 
-                  onChange={e => setConfigUserId(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleSearchUser()}
-                  className="px-3 py-2 text-[14px] bg-[#FAFAFA] border border-[#EAEAEA] rounded-md focus:bg-white focus:border-[#999] focus:ring-0 outline-none transition-all placeholder:text-[#BBBBBB] w-full md:w-64"
-                  placeholder="Search by email or username"
-                />
-                <button 
-                  onClick={handleSearchUser}
+                <div ref={searchRef} className="relative w-full md:w-64">
+                  <input
+                    type="text"
+                    value={configUserId}
+                    onChange={e => { setConfigUserId(e.target.value); setShowUserDropdown(true); }}
+                    onFocus={() => setShowUserDropdown(true)}
+                    onKeyDown={e => { if (e.key === 'Enter') { setShowUserDropdown(false); handleSearchUser(); } if (e.key === 'Escape') setShowUserDropdown(false); }}
+                    className="px-3 py-2 text-[14px] bg-[#FAFAFA] border border-[#EAEAEA] rounded-md focus:bg-white focus:border-[#999] focus:ring-0 outline-none transition-all placeholder:text-[#BBBBBB] w-full"
+                    placeholder="Search by email or username"
+                  />
+                  {showUserDropdown && orgUsers.length > 0 && (
+                    <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-[#EAEAEA] rounded-md shadow-lg max-h-56 overflow-y-auto">
+                      {orgUsers
+                        .filter(u => {
+                          const q = configUserId.toLowerCase();
+                          return !q || u.email.toLowerCase().includes(q) || u.employee_id.toLowerCase().includes(q);
+                        })
+                        .map(u => {
+                          const display = u.employee_id || u.email;
+                          const sub = u.employee_id ? u.email : '';
+                          return (
+                            <button
+                              key={u.id}
+                              onMouseDown={e => { e.preventDefault(); setConfigUserId(u.employee_id || u.email); setShowUserDropdown(false); }}
+                              className="w-full text-left px-3 py-2 hover:bg-[#F5F5F5] transition-colors border-b border-[#F5F5F5] last:border-0"
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <div>
+                                  <div className="text-[13px] font-medium text-[#111111] truncate">{display}</div>
+                                  {sub && <div className="text-[11px] text-[#999] truncate">{sub}</div>}
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${u.role === 'admin' ? 'bg-[#111] text-white' : 'bg-[#F0F0F0] text-[#555]'}`}>{u.role}</span>
+                                  {u.is_blocked && <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-600 font-medium">blocked</span>}
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })}
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => { setShowUserDropdown(false); handleSearchUser(); }}
                   className="px-5 py-2 bg-[#111111] text-white text-[14px] font-medium rounded-md hover:bg-[#333333] transition-colors"
                 >
                   Search User

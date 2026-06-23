@@ -356,20 +356,30 @@ async def check_message(request: Request, body: CheckRequest, db: Session = Depe
                         system_instruction=system_prompt
                     )
                 )
-                response_stream = await asyncio.wait_for(
-                    chat.send_message_stream(processed_text), timeout=45
-                )
-                async for chunk in response_stream:
-                    if chunk.text:
-                        llm_reply += chunk.text
-                        yield f"data: {json.dumps({'type': 'chunk', 'text': chunk.text})}\n\n"
-                
+
+                async def _collect_stream():
+                    parts = []
+                    stream = chat.send_message_stream(processed_text)
+                    if asyncio.iscoroutine(stream):
+                        stream = await stream
+                    async for chunk in stream:
+                        if chunk.text:
+                            parts.append(chunk.text)
+                    return parts
+
+                try:
+                    chunks = await asyncio.wait_for(_collect_stream(), timeout=45)
+                    for text in chunks:
+                        llm_reply += text
+                        yield f"data: {json.dumps({'type': 'chunk', 'text': text})}\n\n"
+                except asyncio.TimeoutError:
+                    yield f"data: {json.dumps({'type': 'error', 'text': 'Request timed out. Please try again.'})}\n\n"
+                    return
+
                 if real_sess_id:
                     model_msg = ChatMessage(session_id=real_sess_id, role="model", content=llm_reply)
                     db.add(model_msg)
                     db.commit()
-            except asyncio.TimeoutError:
-                yield f"data: {json.dumps({'type': 'error', 'text': 'Request timed out. Please try again.'})}\n\n"
             except Exception as e:
                 yield f"data: {json.dumps({'type': 'error', 'text': f'Error calling Gemini: {str(e)}'})}\n\n"
         else:
@@ -579,14 +589,14 @@ def health():
     return {"status": "ok"}
 
 def _resolve_org_user(user_id: str, current_user, db) -> "User | None":
-    """Return a User in current_user's org by UUID string, username, or email."""
+    """Return a User in current_user's org by UUID string, employee_id, or email."""
     import uuid as _uuid
     try:
         uid = _uuid.UUID(user_id)
         return db.query(User).filter(User.id == uid, User.org_id == current_user.org_id).first()
     except ValueError:
         return db.query(User).filter(
-            (User.username == user_id) | (User.email == user_id),
+            (User.employee_id == user_id) | (User.email == user_id),
             User.org_id == current_user.org_id
         ).first()
 
@@ -747,6 +757,24 @@ def fetch_stats(db, current_user, is_base_user: bool, user_id=None, start_time=N
         detected_types=[StatCount(name=k, count=v) for k, v in type_counts.items()],
         top_sequences=[StatCount(name=k, count=v) for k, v in seq_counts.most_common(10)]
     )
+
+@app.get("/api/v1/admin/users")
+def list_org_users(request: Request, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
+    current_user = request.state.current_user
+    is_base_user = getattr(request.state, "is_base_user", True)
+    if is_base_user:
+        return []
+    users = db.query(User).filter(User.org_id == current_user.org_id, User.is_active == True).order_by(User.created_at).all()
+    return [
+        {
+            "id": str(u.id),
+            "email": u.email or "",
+            "employee_id": u.employee_id or "",
+            "role": u.role,
+            "is_blocked": u.is_blocked,
+        }
+        for u in users
+    ]
 
 @app.get("/api/v1/admin/stats", response_model=StatsResponse)
 def get_global_stats(request: Request, start_time: Optional[datetime] = None, end_time: Optional[datetime] = None, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
