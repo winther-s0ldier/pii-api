@@ -93,8 +93,7 @@ def verify_credentials(request: Request, bearer_creds: HTTPAuthorizationCredenti
                         )
                         db.add(org)
                 else:
-                    # Fallback if the user hasn't selected an organization in Clerk
-                    org = db.query(Organization).first()
+                    org = None
 
                 user = db.query(User).filter(User.email == clerk_id).first()
                 if not user:
@@ -110,8 +109,14 @@ def verify_credentials(request: Request, bearer_creds: HTTPAuthorizationCredenti
                     db.commit()
                     db.refresh(user)
                 else:
+                    if clerk_org_id and org and user.org_id != org.id:
+                        user.org_id = org.id
+                        user.role = "admin" if data.get("org_role") == "org:admin" else "employee"
+                        user.rate_limit_per_day = None
                     db.commit()
                 user.is_base_user = (clerk_org_id is None)
+                request.state.clerk_org_id = clerk_org_id
+                request.state.clerk_user_id = clerk_id
                 if getattr(user, 'is_blocked', False):
                     raise HTTPException(status_code=403, detail="Account suspended")
             except HTTPException:
@@ -490,6 +495,7 @@ class BlockedMessageSave(_BaseModel):
     message: str
     user_id: str = "default_user"
     model_explanation: Optional[str] = None
+    blocked_types: Optional[list] = None
 
 @app.post("/api/v1/sessions/save-blocked")
 def save_blocked_message(request: Request, body: BlockedMessageSave, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
@@ -505,6 +511,17 @@ def save_blocked_message(request: Request, body: BlockedMessageSave, db: Session
     if body.model_explanation:
         model_msg = ChatMessage(session_id=body.session_id, role="model", content=body.model_explanation)
         db.add(model_msg)
+    detected = [t.get("type", "") for t in (body.blocked_types or []) if isinstance(t, dict)]
+    flagged = [t.get("value", "") for t in (body.blocked_types or []) if isinstance(t, dict)]
+    db.add(StatLog(
+        user_id=user.id,
+        org_id=user.org_id,
+        session_id=body.session_id,
+        action="BLOCK",
+        detected_types=json.dumps(detected),
+        flagged_sequences=json.dumps(flagged),
+        original_message=body.message,
+    ))
     db.commit()
     return {"status": "saved"}
 
@@ -557,6 +574,19 @@ async def check_message_batch(request: Request, body: BatchCheckRequest, db: Ses
 def health():
     return {"status": "ok"}
 
+def _resolve_org_user(user_id: str, current_user, db) -> "User | None":
+    """Return a User in current_user's org by UUID string, username, or email."""
+    import uuid as _uuid
+    try:
+        uid = _uuid.UUID(user_id)
+        return db.query(User).filter(User.id == uid, User.org_id == current_user.org_id).first()
+    except ValueError:
+        return db.query(User).filter(
+            (User.username == user_id) | (User.email == user_id),
+            User.org_id == current_user.org_id
+        ).first()
+
+
 @app.get("/api/v1/admin/config/{user_id}", response_model=TierConfigResponse)
 def get_user_config(request: Request, user_id: str, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
     current_user = request.state.current_user
@@ -586,20 +616,13 @@ def get_user_config(request: Request, user_id: str, db: Session = Depends(get_db
             else:
                 target_user = current_user
     else:
-        import uuid
-        try:
-            uid = uuid.UUID(user_id)
-            if is_base_user and uid != current_user.id:
-                raise HTTPException(status_code=403, detail="Access denied")
-            if not is_base_user:
-                target_user = db.query(User).filter(User.id == uid, User.org_id == current_user.org_id).first()
-                if not target_user:
-                    raise HTTPException(status_code=403, detail="Access denied")
-            else:
-                target_user = current_user
-        except:
-            raise HTTPException(status_code=400, detail="Invalid user_id")
-            
+        if is_base_user:
+            target_user = current_user
+        else:
+            target_user = _resolve_org_user(user_id, current_user, db)
+            if not target_user:
+                raise HTTPException(status_code=404, detail="User not found")
+
     if not target_user or not target_user.tier_block:
         return TierConfigResponse(
             user_id=user_id,
@@ -647,20 +670,13 @@ def update_user_config(request: Request, user_id: str, body: TierConfigUpdate, d
                 db.commit()
                 return {"status": "updated"}
     else:
-        import uuid
-        try:
-            uid = uuid.UUID(user_id)
-            if is_base_user and uid != current_user.id:
-                raise HTTPException(status_code=403, detail="Access denied")
-            if not is_base_user:
-                target_user = db.query(User).filter(User.id == uid, User.org_id == current_user.org_id).first()
-                if not target_user:
-                    raise HTTPException(status_code=403, detail="Access denied")
-            else:
-                target_user = current_user
-        except:
-            raise HTTPException(status_code=400, detail="Invalid user_id")
-            
+        if is_base_user:
+            target_user = current_user
+        else:
+            target_user = _resolve_org_user(user_id, current_user, db)
+            if not target_user:
+                raise HTTPException(status_code=404, detail="User not found")
+
         target_user.tier_block = body.tier_block
         target_user.tier_redact = body.tier_redact
         target_user.tier_audit = body.tier_audit
@@ -685,18 +701,13 @@ def fetch_stats(db, current_user, is_base_user: bool, user_id=None, start_time=N
         query = query.filter(StatLog.org_id == current_user.org_id)
         
     if user_id and user_id not in ["default_user", "me"]:
-        import uuid
-        try:
-            uid = uuid.UUID(user_id)
-            if is_base_user and uid != current_user.id:
+        if is_base_user:
+            query = query.filter(StatLog.user_id == current_user.id)
+        else:
+            target_user = _resolve_org_user(user_id, current_user, db)
+            if not target_user:
                 return StatsResponse(total_requests=0, actions=[], detected_types=[], top_sequences=[])
-            if not is_base_user:
-                target_user = db.query(User).filter(User.id == uid, User.org_id == current_user.org_id).first()
-                if not target_user:
-                    return StatsResponse(total_requests=0, actions=[], detected_types=[], top_sequences=[])
-            query = query.filter(StatLog.user_id == uid)
-        except:
-            return StatsResponse(total_requests=0, actions=[], detected_types=[], top_sequences=[])
+            query = query.filter(StatLog.user_id == target_user.id)
             
     if start_time:
         query = query.filter(StatLog.created_at >= start_time)
@@ -762,17 +773,10 @@ def get_user_logs(request: Request, user_id: str, limit: int = 50, db: Session =
             # Return org-wide logs
             logs = db.query(StatLog).filter(StatLog.org_id == current_user.org_id).order_by(StatLog.created_at.desc()).limit(limit).all()
         else:
-            import uuid
-            try:
-                uid = uuid.UUID(user_id)
-            except:
-                return []
-            
-            target_user = db.query(User).filter(User.id == uid, User.org_id == current_user.org_id).first()
+            target_user = _resolve_org_user(user_id, current_user, db)
             if not target_user:
-                raise HTTPException(status_code=403, detail="Access denied")
-                
-            logs = db.query(StatLog).filter(StatLog.user_id == uid).order_by(StatLog.created_at.desc()).limit(limit).all()
+                raise HTTPException(status_code=404, detail="User not found")
+            logs = db.query(StatLog).filter(StatLog.user_id == target_user.id).order_by(StatLog.created_at.desc()).limit(limit).all()
 
     result_logs = []
     for log in logs:
@@ -1242,15 +1246,15 @@ async def upload_document(
         block_set = tier_config["block"] if tier_config else TIER_BLOCK
         blocked_types = [d.type for d in detections if d.type in block_set]
         primary_type = blocked_types[0] if blocked_types else "code"
-        
+
         blocked_redacted_types = [rt for rt in redacted_types if rt.type in block_set]
-        
+
         return BlockResult(
             action="BLOCK",
             warning=get_block_warning(primary_type),
             blocked_types=blocked_redacted_types
         )
-    
+
     return CheckResult(
         action=action,
         was_redacted=(action == "REDACT"),
@@ -1258,3 +1262,59 @@ async def upload_document(
         redacted_types=redacted_types
     )
 
+
+@app.post("/api/v1/admin/invite/bulk")
+async def bulk_invite(
+    request: Request,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_credentials),
+):
+    import csv, io
+    from clerk_backend_api import Clerk
+    from clerk_backend_api.models import CreateOrganizationInvitationBulkRequestBody
+
+    clerk_org_id = getattr(request.state, "clerk_org_id", None)
+    clerk_user_id = getattr(request.state, "clerk_user_id", None)
+    if not clerk_org_id:
+        raise HTTPException(status_code=400, detail="No active organization in session")
+
+    content = (await file.read()).decode("utf-8-sig")
+    reader = csv.reader(io.StringIO(content))
+    emails = []
+    for i, row in enumerate(reader):
+        if not row:
+            continue
+        val = row[0].strip()
+        if i == 0 and ("email" in val.lower() or "@" not in val):
+            continue  # skip header row
+        if "@" in val:
+            emails.append(val.lower())
+
+    if not emails:
+        raise HTTPException(status_code=400, detail="No valid email addresses found in CSV")
+
+    clerk = Clerk(bearer_auth=os.getenv("CLERK_SECRET_KEY"))
+    sent, failed = [], []
+
+    for i in range(0, len(emails), 10):
+        batch = emails[i:i + 10]
+        try:
+            clerk.organization_invitations.bulk_create(
+                organization_id=clerk_org_id,
+                request_body=[
+                    CreateOrganizationInvitationBulkRequestBody(
+                        email_address=email,
+                        role="org:member",
+                        inviter_user_id=clerk_user_id,
+                        redirect_url="https://chat.adopshun.com",
+                    )
+                    for email in batch
+                ],
+            )
+            sent.extend(batch)
+        except Exception as e:
+            logger.warning("Bulk invite batch failed: %s", e)
+            failed.extend(batch)
+
+    return {"sent": sent, "failed": failed, "total": len(emails)}

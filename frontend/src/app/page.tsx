@@ -302,7 +302,8 @@ export default function ChatPage() {
             id: crypto.randomUUID(),
             role: 'user',
             content: originalText,
-            status: 'blocked'
+            status: 'blocked',
+            redactedTypes: data.blocked_types
           },
           {
             id: crypto.randomUUID(),
@@ -315,7 +316,7 @@ export default function ChatPage() {
         fetch(`${API_BASE_URL}/api/v1/sessions/save-blocked`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` },
-          body: JSON.stringify({ session_id: currentSessionId, message: originalText })
+          body: JSON.stringify({ session_id: currentSessionId, message: originalText, blocked_types: data.blocked_types })
         }).then(() => loadSessions()).catch(e => console.error('Failed to save blocked message', e));
         setIsLoading(false);
         return;
@@ -482,7 +483,7 @@ export default function ChatPage() {
         fetch(`${API_BASE_URL}/api/v1/sessions/save-blocked`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` },
-          body: JSON.stringify({ session_id: currentSessionId, message: text, model_explanation: explanation })
+          body: JSON.stringify({ session_id: currentSessionId, message: text, model_explanation: explanation, blocked_types: errorData.detail?.blocked_types })
         }).then(() => loadSessions()).catch(e => console.error('Failed to save blocked message', e));
 
         setIsLoading(false);
@@ -550,7 +551,7 @@ export default function ChatPage() {
     }
   };
 
-  const renderMessageContent = (msgId: string, content: string, redactedTypes?: RedactedType[], role?: string) => {
+  const renderMessageContent = (msgId: string, content: string, redactedTypes?: RedactedType[], role?: string, status?: string) => {
     let displayContent = content;
     if (role === 'user' && content.startsWith('[Document: ')) {
       const firstLineEnd = content.indexOf('\n');
@@ -562,7 +563,32 @@ export default function ChatPage() {
     if (!redactedTypes || redactedTypes.length === 0) {
       return displayContent;
     }
-    
+
+    // Blocked messages: find actual PII values in the original text and strike them through
+    if (status === 'blocked') {
+      let parts: (string | React.ReactNode)[] = [displayContent];
+      redactedTypes.forEach((rt, rtIdx) => {
+        if (!rt.value) return;
+        parts = parts.flatMap(part => {
+          if (typeof part !== 'string') return [part];
+          const segments = part.split(rt.value);
+          const newParts: (string | React.ReactNode)[] = [];
+          segments.forEach((seg, i) => {
+            newParts.push(seg);
+            if (i < segments.length - 1) {
+              newParts.push(
+                <s key={`blocked-${rtIdx}-${i}`} className="opacity-60 decoration-white/80" title={rt.type}>
+                  {rt.value}
+                </s>
+              );
+            }
+          });
+          return newParts;
+        });
+      });
+      return parts;
+    }
+
     let parts: (string | React.ReactNode)[] = [displayContent];
     
     redactedTypes.forEach(rt => {
@@ -1024,7 +1050,7 @@ export default function ChatPage() {
                              </div>
                            )
                         ) : (
-                           <div>{renderMessageContent(msg.id, msg.content, msg.redactedTypes, msg.role)}</div>
+                           <div>{renderMessageContent(msg.id, msg.content, msg.redactedTypes, msg.role, msg.status)}</div>
                         )}
                       </div>
                     )}
