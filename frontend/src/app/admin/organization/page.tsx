@@ -1,6 +1,7 @@
 "use client";
 
-import { OrganizationProfile, OrganizationSwitcher, useAuth } from "@clerk/nextjs";
+import { OrganizationProfile, OrganizationSwitcher } from "@clerk/nextjs";
+import { useAuth } from "@/lib/useDevAuth";
 import { Shield, Upload, CheckCircle, XCircle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";

@@ -7,7 +7,8 @@ import { Shield, Plus, PanelLeft, Send, CheckCircle2, ShieldAlert, X, ShieldBan,
 import ReactMarkdown from 'react-markdown';
 import { driver } from "driver.js";
 import "driver.js/dist/driver.css";
-import { SignIn, UserButton, useAuth } from "@clerk/nextjs";
+import { SignIn, UserButton } from "@clerk/nextjs";
+import { useAuth } from "@/lib/useDevAuth";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -127,32 +128,42 @@ export default function ChatPage() {
   }, [isLoaded, isSignedIn]);
 
   useEffect(() => {
-    if (!isAuthenticated) return;
-    
-    const hasSeenTour = localStorage.getItem('hasSeenTour');
-    if (!hasSeenTour) {
-      setTimeout(() => {
-        const isMobile = window.innerWidth < 768;
-        const steps = isMobile ? [
-          { element: '#tour-chat-input', popover: { title: 'Secure Chat', description: 'Paste your message or text here. PII is redacted in real-time before reaching the LLM.' } },
-          { element: '#tour-mobile-menu', popover: { title: 'Menu', description: 'Open the sidebar to track PII redactions, configure what to block, and see history.' } }
-        ] : [
-          { element: '#tour-chat-input', popover: { title: 'Secure Chat', description: 'Paste your message or text here. PII is redacted in real-time before reaching the LLM.' } },
-          { element: '#tour-session-stats', popover: { title: 'Session Stats', description: 'Track how many entities were safely passed, redacted, or blocked.' } },
-          { element: '#tour-new-chat', popover: { title: 'New Chat', description: 'Click here to wipe context and securely start a fresh session.' } }
-        ];
+    if (!isAuthenticated || !isLoaded) return;
 
-        const driverObj = driver({
-          showProgress: true,
-          steps: steps,
-          onDestroyed: () => {
-            localStorage.setItem('hasSeenTour', 'true');
-          }
-        });
-        driverObj.drive();
-      }, 500);
-    }
-  }, [isAuthenticated]);
+    const userType = !orgId ? 'base' : orgRole === 'org:admin' ? 'admin' : 'user';
+    const tourKey = `hasSeenTour_${userType}`;
+    if (localStorage.getItem(tourKey)) return;
+
+    setTimeout(() => {
+      const isMobile = window.innerWidth < 768;
+
+      const chatStep = { element: '#tour-chat-input', popover: { title: 'Secure Chat', description: 'Type or paste messages here. PII is detected and redacted in real-time before anything reaches the AI.' } };
+      const statsStep = { element: '#tour-session-stats', popover: { title: 'Session Stats', description: 'See how many messages were passed clean, redacted, or blocked in this session.' } };
+      const newChatStep = { element: '#tour-new-chat', popover: { title: 'New Chat', description: 'Start a fresh session to clear context and history.' } };
+      const mobileMenuStep = { element: '#tour-mobile-menu', popover: { title: 'Sidebar', description: 'Open the sidebar to track PII detections, start new chats, and access session stats.' } };
+
+      const steps =
+        userType === 'base'
+          ? isMobile
+            ? [chatStep, mobileMenuStep]
+            : [chatStep, statsStep, newChatStep, { element: '#tour-admin-btn', popover: { title: 'Your Admin Panel', description: "Configure which PII types to block, redact, or audit. Add custom labels and dictionary terms — you're your own admin." } }]
+          : userType === 'admin'
+          ? isMobile
+            ? [chatStep, mobileMenuStep]
+            : [chatStep, statsStep, newChatStep, { element: '#tour-admin-btn', popover: { title: 'Admin Panel', description: "Manage your organization's PII policy — set tier rules, add custom labels, build dictionaries, and control user access." } }]
+          : // enterprise user — no admin access, no 4th step
+          isMobile
+          ? [chatStep, mobileMenuStep]
+          : [chatStep, statsStep, newChatStep];
+
+      const driverObj = driver({
+        showProgress: true,
+        steps,
+        onDestroyed: () => localStorage.setItem(tourKey, 'true'),
+      });
+      driverObj.drive();
+    }, 500);
+  }, [isAuthenticated, isLoaded, orgId, orgRole]);
 
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
@@ -826,8 +837,9 @@ export default function ChatPage() {
           </div>
           <div className="flex items-center gap-2">
             {isLoaded && isSignedIn && (!orgId || orgRole === 'org:admin') && (
-              <a 
-                href="/admin" 
+              <a
+                id="tour-admin-btn"
+                href="/admin"
                 className="p-2 hover:bg-black/5 rounded-full text-muted-foreground hover:text-primary transition-colors flex items-center justify-center"
                 title="Admin Dashboard"
               >

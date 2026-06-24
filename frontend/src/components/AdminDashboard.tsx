@@ -1,5 +1,5 @@
 'use client';
-import { useAuth } from '@clerk/nextjs';
+import { useAuth } from '@/lib/useDevAuth';
 
 import React, { useState, useEffect } from 'react';
 import { Shield, Users, Activity, Settings, Save, AlertCircle, Eye, EyeOff, Clock, List, MessageSquare, X } from 'lucide-react';

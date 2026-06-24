@@ -1,8 +1,19 @@
 'use client';
-import { useAuth } from '@clerk/nextjs';
+import { useAuth } from '@/lib/useDevAuth';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Tag, AlertCircle, Save, Users, ChevronDown, ChevronUp, Download, Upload, X } from 'lucide-react';
+import { Tag, AlertCircle, Save, Users, ChevronDown, ChevronUp, Download, Upload, X, Shield, Cpu, BookOpen } from 'lucide-react';
+
+type LabelMeta = {
+  id: number | null;
+  name: string;
+  description: string;
+  tier: string;
+  dictionary_words: string[];
+  is_builtin: boolean;
+  detection_methods: string[];
+  examples: string[];
+};
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -47,6 +58,11 @@ export default function LabelsManager() {
   const [previewItems, setPreviewItems] = useState<PreviewItem[] | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Label detail popup
+  const [labelMeta, setLabelMeta] = useState<LabelMeta[]>([]);
+  const [popupLabel, setPopupLabel] = useState<LabelMeta | null>(null);
+  const didDragRef = useRef(false);
+
   const fetchConfig = async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/admin/config/${configUserId}`, {
@@ -90,8 +106,20 @@ export default function LabelsManager() {
     if (configUserId) {
       fetchConfig();
       fetchCustomLabels();
+      fetchLabelMeta();
     }
   }, [configUserId]);
+
+  const fetchLabelMeta = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/admin/labels/all`, {
+        headers: { 'Authorization': `Bearer ${await getToken()}` }
+      });
+      if (res.ok) setLabelMeta(await res.json());
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const handleSearchUser = () => {
     fetchConfig();
@@ -253,8 +281,15 @@ export default function LabelsManager() {
   };
 
   const handleDragStart = (e: React.DragEvent, label: string, sourceTier: string) => {
+    didDragRef.current = true;
     e.dataTransfer.setData('label', label);
     e.dataTransfer.setData('sourceTier', sourceTier);
+  };
+
+  const handleLabelClick = (labelName: string) => {
+    if (didDragRef.current) { didDragRef.current = false; return; }
+    const meta = labelMeta.find(l => l.name === labelName);
+    if (meta) setPopupLabel(meta);
   };
 
   const handleDrop = (e: React.DragEvent, targetTier: 'tier_block' | 'tier_redact' | 'tier_audit') => {
@@ -404,12 +439,14 @@ export default function LabelsManager() {
                           <div
                             key={label}
                             draggable
+                            onMouseDown={() => { didDragRef.current = false; }}
                             onDragStart={e => handleDragStart(e, label, tier.id)}
-                            className={`group border shadow-[0_1px_2px_rgba(0,0,0,0.02)] px-2.5 py-1.5 rounded-md text-[13px] cursor-grab active:cursor-grabbing font-medium transition-colors flex items-center justify-between gap-2 ${tier.labelColor}`}
+                            onClick={() => handleLabelClick(label)}
+                            className={`group border shadow-[0_1px_2px_rgba(0,0,0,0.02)] px-2.5 py-1.5 rounded-md text-[13px] cursor-pointer active:cursor-grabbing font-medium transition-colors flex items-center justify-between gap-2 ${tier.labelColor}`}
                           >
                             <span>{label}</span>
-                            <button 
-                              onClick={() => handleDeleteLabel(label)}
+                            <button
+                              onClick={e => { e.stopPropagation(); handleDeleteLabel(label); }}
                               className="text-[#BBBBBB] hover:text-red-500 hover:bg-red-50 rounded-md p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
                               title="Delete label"
                             >
@@ -442,6 +479,89 @@ export default function LabelsManager() {
           <div className="p-8 text-center text-[#888888] text-[13px]">Loading configuration...</div>
         )}
       </section>
+
+      {/* LABEL DETAIL POPUP */}
+      {popupLabel && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setPopupLabel(null)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="p-6 border-b border-[#EAEAEA] flex items-start justify-between">
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-lg font-semibold text-[#111111]">{popupLabel.name}</h2>
+                  {popupLabel.is_builtin && (
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#F0F0F0] text-[#666666] border border-[#E0E0E0] flex items-center gap-1">
+                      <Shield size={9} /> BUILT-IN
+                    </span>
+                  )}
+                  <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-md border ${
+                    popupLabel.tier === 'tier_block' ? 'bg-red-50 text-red-700 border-red-100' :
+                    popupLabel.tier === 'tier_redact' ? 'bg-amber-50 text-amber-700 border-amber-100' :
+                    'bg-green-50 text-green-700 border-green-100'
+                  }`}>
+                    {popupLabel.tier.replace('tier_', '').toUpperCase()}
+                  </span>
+                </div>
+                {popupLabel.description && (
+                  <p className="text-[13px] text-[#666666] mt-2 leading-relaxed">{popupLabel.description}</p>
+                )}
+              </div>
+              <button onClick={() => setPopupLabel(null)} className="text-[#BBBBBB] hover:text-[#111111] ml-4 shrink-0">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-5">
+              {popupLabel.detection_methods.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <Cpu size={13} className="text-[#BBBBBB]" />
+                    <span className="text-[11px] font-semibold text-[#888888] uppercase tracking-wide">How it's detected</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {popupLabel.detection_methods.map((m, i) => (
+                      <span key={i} className="text-[12px] px-2.5 py-1 bg-[#F5F5F5] text-[#555555] rounded-md border border-[#EAEAEA]">{m}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {popupLabel.examples.length > 0 && (
+                <div>
+                  <span className="text-[11px] font-semibold text-[#888888] uppercase tracking-wide">Examples</span>
+                  <div className="mt-2 space-y-1.5">
+                    {popupLabel.examples.map((ex, i) => (
+                      <div key={i} className="text-[12px] text-[#444444] font-mono bg-[#FAFAFA] px-3 py-1.5 rounded-md border border-[#F0F0F0]">{ex}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {popupLabel.dictionary_words.length > 0 && (
+                <div>
+                  <span className="text-[11px] font-semibold text-[#888888] uppercase tracking-wide">Custom dictionary terms ({popupLabel.dictionary_words.length})</span>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {popupLabel.dictionary_words.slice(0, 8).map((w, i) => (
+                      <span key={i} className="text-[12px] px-2 py-1 bg-[#F5F5F5] text-[#444444] rounded-md border border-[#EAEAEA]">{w}</span>
+                    ))}
+                    {popupLabel.dictionary_words.length > 8 && (
+                      <span className="text-[12px] px-2 py-1 text-[#888888]">+{popupLabel.dictionary_words.length - 8} more</span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="px-6 pb-6">
+              <a
+                href="/admin/dictionary"
+                className="flex items-center justify-center gap-2 w-full px-4 py-2.5 bg-[#111111] text-white text-[13px] font-medium rounded-md hover:bg-[#333333] transition-colors"
+              >
+                <BookOpen size={14} /> Manage Dictionary Terms
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* PREVIEW MODAL */}
       {previewItems && (

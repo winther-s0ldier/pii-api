@@ -50,8 +50,25 @@ _GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip('"').strip("'")
 _gemini_client = genai.Client(api_key=_GEMINI_API_KEY) if _GEMINI_API_KEY else None
 
 
+_NOAUTH_DEV = os.getenv("NOAUTH_DEV", "").lower() in ("1", "true", "yes")
+
 def verify_credentials(request: Request, bearer_creds: HTTPAuthorizationCredentials = Depends(security_bearer), db: Session = Depends(get_db)):
     from app.models_db import Organization, User
+
+    if _NOAUTH_DEV:
+        user = db.query(User).filter(User.email == "dev@local").first()
+        if not user:
+            user = User(email="dev@local", role="admin", password_hash="dev", is_active=True, rate_limit_per_day=100)
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+        user.is_base_user = True
+        request.state.is_base_user = True
+        request.state.current_user = user
+        request.state.clerk_org_id = None
+        request.state.clerk_user_id = "dev@local"
+        return True
+
     try:
         user = None
 
@@ -196,7 +213,10 @@ def get_tier_config_helper(db, user):
                     "redact": set(org.default_tier_redact),
                     "audit": set(org.default_tier_audit)
                 }
+                already_tiered = tier_config["block"] | tier_config["redact"] | tier_config["audit"]
                 for cl in custom_labels:
+                    if cl.name in already_tiered:
+                        continue
                     if cl.tier == "tier_block":
                         tier_config["block"].add(cl.name)
                     elif cl.tier == "tier_redact":
@@ -205,8 +225,11 @@ def get_tier_config_helper(db, user):
                         tier_config["audit"].add(cl.name)
                 return tier_config, custom_labels
         tier_config = {"block": set(TIER_BLOCK), "redact": set(TIER_REDACT), "audit": set(TIER_AUDIT)}
-        
+
+    already_tiered = tier_config["block"] | tier_config["redact"] | tier_config["audit"]
     for cl in custom_labels:
+        if cl.name in already_tiered:
+            continue
         if cl.tier == "tier_block":
             tier_config["block"].add(cl.name)
         elif cl.tier == "tier_redact":
@@ -871,6 +894,94 @@ def list_patterns():
 
 from app.models import CustomLabelCreate, CustomLabelResponse
 
+BUILT_IN_LABEL_METADATA = {
+    "api_key":          {"description": "API keys, tokens, and credentials used to authenticate with third-party services.", "examples": ["sk-abc123...", "ghp_xxxx", "eyJhbGci... (JWT)", "AKIAIOSFODNN7 (AWS)"], "detection_methods": ["Regex patterns", "Entropy analysis"]},
+    "password":         {"description": "Passwords and secrets found in key=value or key: value patterns.", "examples": ["password=secret123", "pwd: mypass", "secret: abc"], "detection_methods": ["Regex (key-value patterns)"]},
+    "credit_card":      {"description": "Credit and debit card numbers (Visa, Mastercard, Amex, Discover).", "examples": ["4111-1111-1111-1111", "5500 0000 0000 0004"], "detection_methods": ["Regex", "Luhn checksum"]},
+    "card number":      {"description": "Payment card numbers in various formats.", "examples": ["4111 1111 1111 1111", "3714 496353 98431"], "detection_methods": ["Regex", "Luhn checksum"]},
+    "credit card":      {"description": "Credit card numbers in standard formats.", "examples": ["4111-1111-1111-1111", "5500-0000-0000-0004"], "detection_methods": ["Regex", "Luhn checksum"]},
+    "CVV":              {"description": "Card verification values — 3 or 4 digit security codes on payment cards.", "examples": ["CVV: 123", "CVC: 4321"], "detection_methods": ["Regex"]},
+    "IBAN":             {"description": "International Bank Account Numbers used for wire transfers.", "examples": ["GB29 NWBK 6016 1331 9268 19", "DE89 3704 0044 0532 0130 00"], "detection_methods": ["Regex"]},
+    "IBAN code":        {"description": "IBAN codes in condensed format.", "examples": ["GB29NWBK60161331926819"], "detection_methods": ["Regex"]},
+    "US bank number":   {"description": "US bank routing numbers (ABA/transit numbers).", "examples": ["routing: 021000021", "ABA: 111000025"], "detection_methods": ["Regex"]},
+    "API keys":         {"description": "Generic API keys from platforms like Stripe, Slack, Google.", "examples": ["sk_live_xxx (Stripe)", "xoxb-xxx (Slack)", "AIza-xxx (Google)"], "detection_methods": ["Regex"]},
+    "code":             {"description": "Code snippets and scripts that may leak business logic or enable injection.", "examples": ["function foo() {...}", "SELECT * FROM users", "import os; os.system(...)"], "detection_methods": ["Code density analysis", "Regex"]},
+    "private_key":      {"description": "Private cryptographic keys (RSA, EC, SSH, PGP).", "examples": ["-----BEGIN RSA PRIVATE KEY-----", "-----BEGIN EC PRIVATE KEY-----"], "detection_methods": ["Regex"]},
+    "crypto wallet":    {"description": "Cryptocurrency wallet addresses (Bitcoin, Ethereum).", "examples": ["1A1zP1eP5QGefi2DMPTfTL5SLmv7...", "0x742d35Cc6634C0532925a3b..."], "detection_methods": ["Regex"]},
+    "email":            {"description": "Email addresses in standard RFC format.", "examples": ["user@example.com", "john.doe+tag@company.org"], "detection_methods": ["Regex"]},
+    "ssn":              {"description": "US Social Security Numbers.", "examples": ["123-45-6789", "987 65 4321"], "detection_methods": ["Regex"]},
+    "US SSN":           {"description": "US Social Security Numbers in standard dashed format.", "examples": ["123-45-6789"], "detection_methods": ["Regex"]},
+    "passport number":  {"description": "Passport numbers and travel document identifiers.", "examples": ["A12345678", "P<USASMITH"], "detection_methods": ["Regex", "AI (Gemini)"]},
+    "US passport":      {"description": "US passport numbers (letter + 8 digits).", "examples": ["A12345678", "B98765432"], "detection_methods": ["AI (Gemini)"]},
+    "driver's license": {"description": "Driver's license numbers from various states and countries.", "examples": ["DL: A1234567", "License: 12345678"], "detection_methods": ["AI (Gemini)"]},
+    "US driver license":{"description": "US state driver's license numbers.", "examples": ["CA: A1234567", "TX: 12345678"], "detection_methods": ["AI (Gemini)"]},
+    "US ITIN":          {"description": "US Individual Taxpayer Identification Numbers (9XX-XX-XXXX format).", "examples": ["900-70-0000", "976-45-6789"], "detection_methods": ["AI (Gemini)"]},
+    "UK NHS number":    {"description": "UK National Health Service patient identifiers.", "examples": ["NHS: 943 476 5919", "national health: 123 456 7890"], "detection_methods": ["Regex"]},
+    "tax ID":           {"description": "Tax identification numbers (Aadhaar, PAN, Voter ID).", "examples": ["1234 5678 9012 (Aadhaar)", "ABCDE1234F (PAN)", "ABC1234567 (Voter ID)"], "detection_methods": ["Regex"]},
+    "full_name":        {"description": "Full names of individuals.", "examples": ["John Smith", "Jane Doe"], "detection_methods": ["AI (Gemini)"]},
+    "person":           {"description": "Person names and personal identifiers.", "examples": ["Mr. John Smith", "Dr. Jane Doe"], "detection_methods": ["AI (Gemini)"]},
+    "location":         {"description": "Geographic locations, place names, and landmarks.", "examples": ["New York", "Eiffel Tower", "San Francisco, CA"], "detection_methods": ["AI (Gemini)"]},
+    "organization":     {"description": "Organization and company names.", "examples": ["Acme Corp", "Microsoft", "Google LLC"], "detection_methods": ["AI (Gemini)"]},
+    "phone number":     {"description": "Phone numbers in US and Indian formats.", "examples": ["+1 (555) 123-4567", "+91 98765 43210"], "detection_methods": ["Regex"]},
+    "physical address": {"description": "Physical mailing and street addresses.", "examples": ["123 Main Street, Apt 4B, New York, NY 10001"], "detection_methods": ["AI (Gemini)"]},
+    "IP address":       {"description": "IPv4 addresses in decimal or hex format.", "examples": ["192.168.1.1", "10.0.0.1", "0xC0A80101"], "detection_methods": ["Regex"]},
+}
+
+@app.get("/api/v1/admin/labels/all")
+def get_all_labels(request: Request, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
+    current_user = request.state.current_user
+    is_base_user = getattr(request.state, "is_base_user", True)
+
+    if is_base_user:
+        custom_labels = db.query(CustomLabel).filter(CustomLabel.user_id == current_user.id).all()
+    else:
+        custom_labels = db.query(CustomLabel).filter(CustomLabel.org_id == current_user.org_id).all()
+
+    custom_map = {cl.name: cl for cl in custom_labels}
+    built_in_names = TIER_BLOCK | TIER_REDACT | TIER_AUDIT
+    all_labels = []
+
+    def _parse_words(raw) -> list:
+        if not raw:
+            return []
+        try:
+            result = json.loads(raw) if isinstance(raw, str) else raw
+            return result if isinstance(result, list) else []
+        except Exception:
+            return []
+
+    for tier_name, tier_set in [("tier_block", TIER_BLOCK), ("tier_redact", TIER_REDACT), ("tier_audit", TIER_AUDIT)]:
+        for name in tier_set:
+            meta = BUILT_IN_LABEL_METADATA.get(name, {})
+            cl = custom_map.get(name)
+            words = _parse_words(cl.dictionary_words) if cl else []
+            all_labels.append({
+                "id": cl.id if cl else None,
+                "name": name,
+                "description": (cl.description if cl and cl.description else None) or meta.get("description", ""),
+                "tier": tier_name,
+                "dictionary_words": words,
+                "is_builtin": True,
+                "detection_methods": meta.get("detection_methods", []),
+                "examples": meta.get("examples", []),
+            })
+
+    for cl in custom_labels:
+        if cl.name not in built_in_names:
+            words = _parse_words(cl.dictionary_words)
+            all_labels.append({
+                "id": cl.id,
+                "name": cl.name,
+                "description": cl.description or "",
+                "tier": cl.tier,
+                "dictionary_words": words,
+                "is_builtin": False,
+                "detection_methods": ["Dictionary", "AI (Gemini)"],
+                "examples": words[:3],
+            })
+
+    return all_labels
+
 @app.post("/api/v1/admin/custom_labels", response_model=CustomLabelResponse)
 def create_custom_label(request: Request, label: CustomLabelCreate, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
     user = request.state.current_user if hasattr(request.state, 'current_user') else None
@@ -1032,11 +1143,15 @@ def export_custom_labels_xlsx(request: Request, db: Session = Depends(get_db), _
     ws = wb.active
     ws.title = "Entity Labels"
     
-    headers = ["Name", "Description", "Tier"]
+    headers = ["Name", "Description", "Tier", "Dictionary Words"]
     ws.append(headers)
-    
+
     for lbl in labels:
-        ws.append([lbl.name, lbl.description, lbl.tier])
+        try:
+            words = json.loads(lbl.dictionary_words) if lbl.dictionary_words else []
+        except Exception:
+            words = []
+        ws.append([lbl.name, lbl.description, lbl.tier, ", ".join(words) if words else ""])
         
     dv = DataValidation(type="list", formula1='"tier_block,tier_redact,tier_audit"', allow_blank=False)
     ws.add_data_validation(dv)
@@ -1197,7 +1312,10 @@ def import_custom_labels_xlsx_confirm(request: Request, payload: ImportConfirmPa
         if existing:
             existing.description = description
             existing.tier = tier
-            existing.dictionary_words = json.dumps(words)
+            # Only overwrite dictionary words if the import actually provided some,
+            # so that a Labels-only export (blank D column) doesn't wipe existing words.
+            if words:
+                existing.dictionary_words = json.dumps(words)
         else:
             regex_pattern = ""
             if not words and client:

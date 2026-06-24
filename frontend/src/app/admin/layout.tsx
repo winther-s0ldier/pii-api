@@ -4,7 +4,9 @@ import Link from 'next/link';
 import { Shield, LayoutDashboard, BookOpen, Users } from 'lucide-react';
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@clerk/nextjs';
+import { useAuth } from '@/lib/useDevAuth';
+import { driver } from 'driver.js';
+import 'driver.js/dist/driver.css';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -23,6 +25,28 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       router.replace('/');
     }
   }, [shouldRedirect, router]);
+
+  useEffect(() => {
+    if (!isClerkAdmin) return;
+    const tourKey = orgId ? 'hasSeenAdminTour_org' : 'hasSeenAdminTour_base';
+    if (localStorage.getItem(tourKey)) return;
+
+    setTimeout(() => {
+      const steps = [
+        { element: '#admin-nav-dashboard', popover: { title: 'Dashboard', description: 'Overview of your PII activity — request volume, detection rates, and flagged sequences.' } },
+        { element: '#admin-nav-labels', popover: { title: 'Entity Labels', description: 'Control which PII types to block, redact, or just audit. Click any label to see what it detects. Drag to change its tier.' } },
+        { element: '#admin-nav-dictionary', popover: { title: 'Dictionary', description: 'Add specific words and phrases that should be treated as PII. Built-in labels like api_key are shown here too — you can extend them.' } },
+        ...(orgId ? [{ element: '#admin-nav-org', popover: { title: 'Organization', description: 'Manage users, invite members, and configure org-wide policies and quotas.' } }] : []),
+      ];
+
+      const driverObj = driver({
+        showProgress: true,
+        steps,
+        onDestroyed: () => localStorage.setItem(tourKey, 'true'),
+      });
+      driverObj.drive();
+    }, 600);
+  }, [isClerkAdmin, orgId]);
 
   // Wait for Clerk to finish loading
   if (!isLoaded) {
@@ -46,23 +70,23 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </Link>
         </div>
         <nav className="flex-1 p-4 space-y-1">
-          <Link href="/admin" className="flex items-center gap-3 px-3 py-2 text-sm text-[#444444] hover:bg-[#F5F5F5] hover:text-[#111111] rounded-md transition-colors">
+          <Link id="admin-nav-dashboard" href="/admin" className="flex items-center gap-3 px-3 py-2 text-sm text-[#444444] hover:bg-[#F5F5F5] hover:text-[#111111] rounded-md transition-colors">
             <LayoutDashboard size={18} />
             <span className="font-medium">Dashboard</span>
           </Link>
           <div className="pt-6 pb-2 px-3 text-[11px] font-medium text-[#888888] uppercase tracking-wider">Customization</div>
-          <Link href="/admin/labels" className="flex items-center gap-3 px-3 py-2 text-sm text-[#444444] hover:bg-[#F5F5F5] hover:text-[#111111] rounded-md transition-colors">
+          <Link id="admin-nav-labels" href="/admin/labels" className="flex items-center gap-3 px-3 py-2 text-sm text-[#444444] hover:bg-[#F5F5F5] hover:text-[#111111] rounded-md transition-colors">
             <Shield size={18} />
             <span className="font-medium">Entity Labels</span>
           </Link>
-          <Link href="/admin/dictionary" className="flex items-center gap-3 px-3 py-2 text-sm text-[#444444] hover:bg-[#F5F5F5] hover:text-[#111111] rounded-md transition-colors">
+          <Link id="admin-nav-dictionary" href="/admin/dictionary" className="flex items-center gap-3 px-3 py-2 text-sm text-[#444444] hover:bg-[#F5F5F5] hover:text-[#111111] rounded-md transition-colors">
             <BookOpen size={18} />
             <span className="font-medium">Dictionary</span>
           </Link>
           {orgId && (
             <>
               <div className="pt-6 pb-2 px-3 text-[11px] font-medium text-[#888888] uppercase tracking-wider">Users</div>
-              <Link href="/admin/organization" className="flex items-center gap-3 px-3 py-2 text-sm text-[#444444] hover:bg-[#F5F5F5] hover:text-[#111111] rounded-md transition-colors">
+              <Link id="admin-nav-org" href="/admin/organization" className="flex items-center gap-3 px-3 py-2 text-sm text-[#444444] hover:bg-[#F5F5F5] hover:text-[#111111] rounded-md transition-colors">
                 <Users size={18} />
                 <span className="font-medium">Organization</span>
               </Link>
