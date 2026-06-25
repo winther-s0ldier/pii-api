@@ -59,6 +59,7 @@ class Organization (Base ):
     default_tier_audit =Column (JSONB ,nullable =False ,default =list )
     allowed_models =Column (JSONB ,nullable =False ,default =list )
     default_model =Column (String (100 ))
+    llm_config =Column (JSONB )
     monthly_token_budget =Column (Integer )
     rate_limit_per_user_per_day =Column (Integer )
     retention_days =Column (Integer ,nullable =False ,default =90 )
@@ -150,6 +151,7 @@ class StatLog (Base ):
     user_id =Column (UUID (as_uuid =True ),ForeignKey ("users.id",ondelete ="RESTRICT"),nullable =False )
     org_id =Column (UUID (as_uuid =True ),ForeignKey ("organizations.id",ondelete ="RESTRICT"),nullable =False )
     session_id =Column (UUID (as_uuid =True ))
+    api_key_id =Column (UUID (as_uuid =True ),ForeignKey ("api_keys.id",ondelete ="SET NULL"))
     action =Column (String (20 ),nullable =False )
     detected_types =Column (JSONB )
     flagged_sequences =Column (JSONB )
@@ -168,6 +170,29 @@ class CustomLabel (Base ):
     tier =Column (String (20 ),nullable =False )
     regex_pattern =Column (Text )
     dictionary_words =Column (JSONB ,nullable =False ,default =list )
+    created_at =Column (DateTime (timezone =True ),nullable =False ,server_default =func .now ())
+
+class ApiKey (Base ):
+    __tablename__ ="api_keys"
+
+    __table_args__ =(
+    Index ('ix_api_keys_key_hash','key_hash'),
+    Index ('ix_api_keys_user_id','user_id'),
+    Index ('ix_api_keys_org_id','org_id'),
+    )
+
+    id =Column (UUID (as_uuid =True ),primary_key =True ,default =uuid .uuid4 )
+    user_id =Column (UUID (as_uuid =True ),ForeignKey ("users.id",ondelete ="CASCADE"),nullable =False )
+    org_id =Column (UUID (as_uuid =True ),ForeignKey ("organizations.id",ondelete ="CASCADE"))
+    name =Column (String (100 ),nullable =False )
+    prefix =Column (String (16 ),nullable =False )
+    key_hash =Column (String (64 ),nullable =False ,unique =True )
+    scopes =Column (JSONB ,nullable =False ,default =list )
+    rate_limit_per_min =Column (Integer ,nullable =False ,default =60 )
+    last_used_at =Column (DateTime (timezone =True ))
+    last_used_ip =Column (String (45 ))
+    expires_at =Column (DateTime (timezone =True ))
+    is_active =Column (Boolean ,nullable =False ,default =True )
     created_at =Column (DateTime (timezone =True ),nullable =False ,server_default =func .now ())
 
 class Invitation (Base ):

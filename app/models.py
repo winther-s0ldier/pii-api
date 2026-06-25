@@ -1,4 +1,5 @@
 from typing import List, Optional, Dict, Any, Union
+from datetime import datetime
 from pydantic import BaseModel, Field
 
 
@@ -8,6 +9,44 @@ class CheckRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=5_000_000)
     allowed_pii: List[str] = Field(default=[])
     ignored_values: List[str] = Field(default=[])
+    model: Optional[str] = Field(default=None, description="LLM model id to use for this message")
+
+
+class CustomEndpoint(BaseModel):
+    base_url: str
+    api_key: Optional[str] = None
+    model_name: str
+    display_name: Optional[str] = None
+
+
+class OrgModelConfig(BaseModel):
+    default_model: Optional[str] = None
+    allowed_models: List[str] = Field(default_factory=list)
+    custom_endpoint: Optional[CustomEndpoint] = None
+
+
+class ApiKeyCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    scopes: List[str] = Field(default_factory=lambda: ["check"])
+    expires_in_days: Optional[int] = None
+    rate_limit_per_min: int = Field(default=60, ge=1, le=10000)
+
+
+class ApiKeyInfo(BaseModel):
+    id: str
+    name: str
+    prefix: str
+    scopes: List[str]
+    rate_limit_per_min: int = 60
+    last_used_at: Optional[datetime] = None
+    last_used_ip: Optional[str] = None
+    expires_at: Optional[datetime] = None
+    is_active: bool
+    created_at: datetime
+
+
+class ApiKeyCreated(ApiKeyInfo):
+    key: str  # full key, returned ONCE on creation
 
 
 class RedactedType(BaseModel):
@@ -74,6 +113,7 @@ class SessionDetailResponse(BaseModel):
     id: str
     title: str
     messages: List[ChatMessageInfo]
+    model_used: Optional[str] = None
 
 class TierConfigUpdate(BaseModel):
     tier_block: List[str] = []

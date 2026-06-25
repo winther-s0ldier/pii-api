@@ -13,11 +13,13 @@ logger = logging.getLogger(__name__)
 from app.models import (
     CheckRequest, CheckResponse, BlockResponse, RedactedType,
     SessionListResponse, SessionDetailResponse, ChatSessionInfo, ChatMessageInfo,
-    TierConfigUpdate, TierConfigResponse, StatsResponse, StatCount
+    TierConfigUpdate, TierConfigResponse, StatsResponse, StatCount,
+    OrgModelConfig, ApiKeyCreate
 )
 from app.pipeline import pipeline
 from app.pipeline import regex_stage
 from app.config import get_block_warning, TIER_BLOCK, TIER_REDACT, TIER_AUDIT
+from app import llm_client
 from app.models_db import init_db, get_db, Session as ChatSession, Message as ChatMessage, User, StatLog, CustomLabel, Organization
 import json
 from collections import Counter
@@ -67,6 +69,42 @@ def verify_credentials(request: Request, bearer_creds: HTTPAuthorizationCredenti
         request.state.current_user = user
         request.state.clerk_org_id = None
         request.state.clerk_user_id = "dev@local"
+        return True
+
+    # API key authentication (programmatic access, no Clerk JWT)
+    if bearer_creds and bearer_creds.credentials.startswith("adpsh_"):
+        import hashlib
+        from datetime import datetime, timezone
+        from app.models_db import ApiKey
+        key_hash = hashlib.sha256(bearer_creds.credentials.encode()).hexdigest()
+        api_key = db.query(ApiKey).filter(ApiKey.key_hash == key_hash, ApiKey.is_active == True).first()
+        if not api_key:
+            raise HTTPException(status_code=401, detail="Invalid API key")
+        if api_key.expires_at and api_key.expires_at < datetime.now(timezone.utc):
+            raise HTTPException(status_code=401, detail="API key expired")
+
+        key_user = db.query(User).filter(User.id == api_key.user_id).first()
+        if not key_user or getattr(key_user, "is_blocked", False):
+            raise HTTPException(status_code=401, detail="API key owner is inactive")
+
+        api_key.last_used_at = datetime.now(timezone.utc)
+        api_key.last_used_ip = get_remote_address(request)
+        db.commit()
+
+        key_user.is_base_user = (key_user.org_id is None)
+        request.state.is_base_user = key_user.is_base_user
+        request.state.current_user = key_user
+        request.state.via_api_key = True
+        request.state.api_key_scopes = api_key.scopes or []
+        request.state.api_key_id = api_key.id
+        request.state.clerk_org_id = None
+        request.state.clerk_user_id = str(key_user.id)
+
+        if request.url.path.startswith("/api/v1/admin"):
+            raise HTTPException(status_code=403, detail="API keys cannot access admin endpoints")
+
+        # Per-key rate limit (covers every endpoint an API key can reach)
+        enforce_api_rate_limit(str(api_key.id), api_key.rate_limit_per_min or 60)
         return True
 
     try:
@@ -170,6 +208,64 @@ def verify_credentials(request: Request, bearer_creds: HTTPAuthorizationCredenti
     finally:
         pass
 
+
+def require_scope(request: Request, scope: str):
+    """Enforce API-key scopes. No-op for Clerk-authenticated (browser) requests."""
+    if getattr(request.state, "via_api_key", False):
+        if scope not in (getattr(request.state, "api_key_scopes", None) or []):
+            raise HTTPException(status_code=403, detail=f"API key missing required scope: {scope}")
+
+
+import time as _time
+import threading as _threading
+# ponytail: in-process sliding-window rate limiter, keyed by api_key id.
+# Ceiling: per-process (multiplies across uvicorn workers) and resets on restart.
+# Fine for a single-instance deployment; upgrade path is a shared Redis token bucket.
+_rate_buckets: dict = {}
+_rate_lock = _threading.Lock()
+
+def enforce_api_rate_limit(key_id: str, limit_per_min: int):
+    now = _time.time()
+    cutoff = now - 60
+    with _rate_lock:
+        bucket = [t for t in _rate_buckets.get(key_id, []) if t > cutoff]
+        if len(bucket) >= limit_per_min:
+            _rate_buckets[key_id] = bucket
+            raise HTTPException(
+                status_code=429,
+                detail=f"Rate limit exceeded ({limit_per_min}/min for this API key)",
+            )
+        bucket.append(now)
+        _rate_buckets[key_id] = bucket
+
+
+def validate_external_url(url: str):
+    """
+    Block SSRF on admin-supplied LLM endpoints: only http(s), and the host must
+    not resolve to a private/loopback/link-local/reserved address (e.g. the cloud
+    metadata endpoint 169.254.169.254 or internal services).
+    ponytail: validated at set-time only — DNS rebinding (TOCTOU) is not covered;
+    upgrade path is to re-resolve and pin the IP at request time.
+    """
+    import socket, ipaddress
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise HTTPException(status_code=400, detail="Endpoint URL must use http or https")
+    host = parsed.hostname
+    if not host:
+        raise HTTPException(status_code=400, detail="Invalid endpoint URL")
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        raise HTTPException(status_code=400, detail="Endpoint host does not resolve")
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0])
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast or ip.is_unspecified:
+            raise HTTPException(status_code=400, detail="Endpoint resolves to a disallowed internal address")
+
+
 limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(
     title="PII Detection API",
@@ -264,11 +360,46 @@ def read_root():
 @app.post("/api/v1/check")
 @limiter.limit("20/minute")
 async def check_message(request: Request, body: CheckRequest, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
+    require_scope(request, "check")
     user = request.state.current_user
     tier_config, custom_labels = get_tier_config_helper(db, user)
     # 1. Async Pipeline Check
     processed_text, detections, action = await asyncio.to_thread(pipeline.run, body.message, body.allowed_pii, body.ignored_values, tier_config, custom_labels)
-    
+
+    # Programmatic API-key access (Path 3): return the PII verdict only, never call an LLM.
+    if getattr(request.state, "via_api_key", False):
+        block_set = tier_config["block"] if tier_config else TIER_BLOCK
+        # Log the call so API usage shows up in stats (audit/billing).
+        # Store only detection TYPES, never the raw PII values — the API path is
+        # stateless by design; retaining the caller's PII at rest would contradict it.
+        db.add(StatLog(
+            user_id=user.id,
+            org_id=user.org_id,
+            session_id=None,
+            api_key_id=getattr(request.state, "api_key_id", None),
+            action=action,
+            detected_types=json.dumps([d.type for d in detections]),
+            flagged_sequences=json.dumps([]),
+            original_message=None,
+        ))
+        db.commit()
+        return JSONResponse({
+            "action": action,
+            "was_redacted": action == "REDACT",
+            "message": processed_text,
+            "detections": [
+                {
+                    "type": d.type,
+                    "subtype": d.subtype,
+                    "confidence": d.confidence,
+                    "start": d.start,
+                    "end": d.end,
+                    "value": body.message[d.start:d.end],
+                }
+                for d in detections
+            ],
+        })
+
     import uuid
     try:
         real_sess_id = uuid.UUID(body.session_id)
@@ -328,6 +459,8 @@ async def check_message(request: Request, body: CheckRequest, db: Session = Depe
         )
 
     # 2. Database & LLM Integration
+    org = db.query(Organization).filter(Organization.id == user.org_id).first() if user.org_id else None
+    db_session = None
     if real_sess_id:
         db_session = db.query(ChatSession).filter(ChatSession.id == real_sess_id).first()
         if not db_session:
@@ -337,12 +470,18 @@ async def check_message(request: Request, body: CheckRequest, db: Session = Depe
             db.commit()
 
         user_msg = ChatMessage(
-            session_id=real_sess_id, 
-            role="user", 
+            session_id=real_sess_id,
+            role="user",
             content=processed_text,
             redacted_types=json.dumps(redacted_types_dicts)
         )
         db.add(user_msg)
+        db.commit()
+
+    # Resolve which LLM to use and lock it to the session
+    resolved_model = llm_client.resolve_model(body.model, session=db_session, user=user, org=org)
+    if db_session and not db_session.model_used:
+        db_session.model_used = resolved_model
         db.commit()
 
     async def generate():
@@ -356,44 +495,18 @@ async def check_message(request: Request, body: CheckRequest, db: Session = Depe
         yield f"data: {json.dumps(metadata)}\n\n"
 
         llm_reply = ""
-        if _gemini_client and real_sess_id:
+        available = llm_client.get_available_models(user, org)
+        if available and real_sess_id:
             history = db.query(ChatMessage).filter(ChatMessage.session_id == real_sess_id).order_by(ChatMessage.created_at).all()
-            gemini_history = []
-            for msg in history[:-1]:
-                gemini_history.append({"role": msg.role, "parts": [{"text": msg.content}]})
-                
+            prior_history = history[:-1]   # exclude the message we just stored
+
             try:
-            
-                client = _gemini_client
-
-                system_prompt = (
-                    "You are a helpful AI assistant. If you receive a message containing redacted information tags (like [TAX_ID], [PERSON], [EMAIL], etc.), you MUST explicitly acknowledge in your reply that the user's sensitive information was safely redacted for privacy, and provide your best answer based on the context.\n\n"
-                    "CRITICAL WRITING STYLE GUIDELINES (HUMANIZE YOUR TONE):\n"
-                    "1. Avoid AI Vocabulary: Never use words like delve, crucial, testament, underscore, landscape, tapestry, vibrant, pivotal, foster, or intricate.\n"
-                    "2. Avoid Sycophancy: Never use servile openers or closers like 'Great question!', 'I hope this helps!', 'You're absolutely right!', or 'Certainly!'. Just answer directly.\n"
-                    "3. No Formatting Crutches: Do NOT use em dashes (—), en dashes (–), or emojis. Avoid excessive boldface. Avoid formulaic vertical lists with bolded headers.\n"
-                    "4. Natural Rhythm: Vary your sentence lengths. Avoid predictable, robotic cadences. Do not force ideas into groups of three.\n"
-                    "5. Direct and Active: Use active voice. Avoid filler phrases ('In order to...', 'Due to the fact...'). Never end with generic upbeat conclusions ('The future looks bright', 'Exciting times lie ahead').\n"
-                    "6. Be Direct: Get straight to the point. Avoid rhetorical openers like 'Let's dive in' or 'Here's what you need to know'. Avoid fake-candid phrases like 'Honestly?' or 'Real talk'."
-                )
-                
-                chat = client.aio.chats.create(
-                    model="gemini-3.5-flash",
-                    history=gemini_history,
-                    config=types.GenerateContentConfig(
-                        tools=[{"google_search": {}}],
-                        system_instruction=system_prompt
-                    )
-                )
-
                 async def _collect_stream():
                     parts = []
-                    stream = chat.send_message_stream(processed_text)
-                    if asyncio.iscoroutine(stream):
-                        stream = await stream
-                    async for chunk in stream:
-                        if chunk.text:
-                            parts.append(chunk.text)
+                    async for text in llm_client.stream_response(
+                        resolved_model, prior_history, processed_text, org=org
+                    ):
+                        parts.append(text)
                     return parts
 
                 try:
@@ -405,19 +518,184 @@ async def check_message(request: Request, body: CheckRequest, db: Session = Depe
                     yield f"data: {json.dumps({'type': 'error', 'text': 'Request timed out. Please try again.'})}\n\n"
                     return
 
-                if real_sess_id:
-                    model_msg = ChatMessage(session_id=real_sess_id, role="model", content=llm_reply)
-                    db.add(model_msg)
-                    db.commit()
+                model_msg = ChatMessage(session_id=real_sess_id, role="model", content=llm_reply)
+                db.add(model_msg)
+                db.commit()
             except Exception as e:
-                yield f"data: {json.dumps({'type': 'error', 'text': f'Error calling Gemini: {str(e)}'})}\n\n"
+                yield f"data: {json.dumps({'type': 'error', 'text': f'Error calling model: {str(e)}'})}\n\n"
         else:
-            llm_reply = "I am the pseudo LLM. I received your message securely. (Gemini API key not configured)"
+            llm_reply = "I am the pseudo LLM. I received your message securely. (No LLM provider configured)"
             yield f"data: {json.dumps({'type': 'chunk', 'text': llm_reply})}\n\n"
-            
+
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@app.get("/api/v1/models")
+def list_models(request: Request, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
+    user = request.state.current_user
+    org = db.query(Organization).filter(Organization.id == user.org_id).first() if user.org_id else None
+    return {"models": llm_client.get_available_models(user, org)}
+
+
+@app.get("/api/v1/admin/models/config")
+def get_org_model_config(request: Request, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
+    """Current org model settings plus the full catalogue an admin can choose from."""
+    user = request.state.current_user
+    org = db.query(Organization).filter(Organization.id == user.org_id).first() if user.org_id else None
+
+    catalogue = [
+        {"id": mid, "display": m["display"], "tier": m["tier"], "provider": m["provider"],
+         "configured": bool(os.getenv(m["env"]))}
+        for mid, m in llm_client.SUPPORTED_MODELS.items()
+    ]
+    cfg = (getattr(org, "llm_config", None) or {}) if org else {}
+    # never leak the stored custom api key back to the client
+    custom = {k: v for k, v in cfg.items() if k != "api_key"} if cfg else None
+    return {
+        "catalogue": catalogue,
+        "default_model": getattr(org, "default_model", None) if org else None,
+        "allowed_models": getattr(org, "allowed_models", None) or [] if org else [],
+        "custom_endpoint": custom,
+        "custom_configured": llm_client._custom_configured(org),
+    }
+
+
+@app.put("/api/v1/admin/models/config")
+def update_org_model_config(request: Request, body: OrgModelConfig, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
+    user = request.state.current_user
+    if not user.org_id:
+        raise HTTPException(status_code=400, detail="Model configuration is an organization feature")
+
+    org = db.query(Organization).filter(Organization.id == user.org_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    org.allowed_models = body.allowed_models
+    org.default_model = body.default_model
+
+    if body.custom_endpoint:
+        ce = body.custom_endpoint
+        validate_external_url(ce.base_url)  # SSRF guard
+        existing = org.llm_config or {}
+        org.llm_config = {
+            "base_url": ce.base_url,
+            # keep the previous key if the admin left the field blank on edit
+            "api_key": ce.api_key if ce.api_key else existing.get("api_key"),
+            "model_name": ce.model_name,
+            "display_name": ce.display_name,
+        }
+    db.add(org)
+    db.commit()
+    return {"status": "updated"}
+
+
+# ── API key management ─────────────────────────────────────────────────────────
+VALID_API_SCOPES = {"check", "read:stats"}
+
+
+def _api_key_to_info(k) -> dict:
+    return {
+        "id": str(k.id),
+        "name": k.name,
+        "prefix": k.prefix,
+        "scopes": k.scopes or [],
+        "rate_limit_per_min": k.rate_limit_per_min or 60,
+        "last_used_at": k.last_used_at,
+        "last_used_ip": k.last_used_ip,
+        "expires_at": k.expires_at,
+        "is_active": k.is_active,
+        "created_at": k.created_at,
+    }
+
+
+@app.post("/api/v1/admin/api-keys")
+def create_api_key(request: Request, body: ApiKeyCreate, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
+    import secrets, hashlib
+    from datetime import datetime, timezone, timedelta
+    from app.models_db import ApiKey
+
+    user = request.state.current_user
+
+    scopes = [s for s in body.scopes if s in VALID_API_SCOPES] or ["check"]
+    raw = "adpsh_" + secrets.token_urlsafe(32)
+    key_hash = hashlib.sha256(raw.encode()).hexdigest()
+    expires_at = None
+    if body.expires_in_days and body.expires_in_days > 0:
+        expires_at = datetime.now(timezone.utc) + timedelta(days=body.expires_in_days)
+
+    api_key = ApiKey(
+        user_id=user.id,
+        org_id=user.org_id,
+        name=body.name,
+        prefix=raw[:12],
+        key_hash=key_hash,
+        scopes=scopes,
+        rate_limit_per_min=body.rate_limit_per_min,
+        expires_at=expires_at,
+        is_active=True,
+    )
+    db.add(api_key)
+    db.commit()
+    db.refresh(api_key)
+
+    info = _api_key_to_info(api_key)
+    info["key"] = raw   # shown exactly once
+    return info
+
+
+@app.get("/api/v1/admin/api-keys")
+def list_api_keys(request: Request, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
+    from app.models_db import ApiKey
+    from datetime import datetime, timezone, timedelta
+    user = request.state.current_user
+    keys = db.query(ApiKey).filter(ApiKey.user_id == user.id).order_by(ApiKey.created_at.desc()).all()
+
+    # Per-key usage counts — two grouped queries cover every key (no N+1)
+    totals, recent = {}, {}
+    if keys:
+        key_ids = [k.id for k in keys]
+        day_ago = datetime.now(timezone.utc) - timedelta(hours=24)
+        totals = dict(
+            db.query(StatLog.api_key_id, func.count(StatLog.id))
+            .filter(StatLog.api_key_id.in_(key_ids))
+            .group_by(StatLog.api_key_id).all()
+        )
+        recent = dict(
+            db.query(StatLog.api_key_id, func.count(StatLog.id))
+            .filter(StatLog.api_key_id.in_(key_ids), StatLog.created_at >= day_ago)
+            .group_by(StatLog.api_key_id).all()
+        )
+
+    out = []
+    for k in keys:
+        info = _api_key_to_info(k)
+        info["total_calls"] = totals.get(k.id, 0)
+        info["calls_24h"] = recent.get(k.id, 0)
+        out.append(info)
+    return {"api_keys": out}
+
+
+@app.delete("/api/v1/admin/api-keys/{key_id}")
+def revoke_api_key(request: Request, key_id: str, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
+    import uuid as _uuid
+    from app.models_db import ApiKey
+    user = request.state.current_user
+    try:
+        kid = _uuid.UUID(key_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid key id")
+
+    key = db.query(ApiKey).filter(ApiKey.id == kid).first()
+    if not key:
+        raise HTTPException(status_code=404, detail="API key not found")
+    if key.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    key.is_active = False
+    db.commit()
+    return {"status": "revoked"}
 
 from typing import Union
 from app.models import BatchCheckRequest, BatchCheckResponse, CheckResult, BlockResult
@@ -425,10 +703,11 @@ from app.models import BatchCheckRequest, BatchCheckResponse, CheckResult, Block
 @app.post("/api/v1/preview", response_model=Union[CheckResult, BlockResult])
 @limiter.limit("30/minute")
 async def preview_message(request: Request, body: CheckRequest, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
+    require_scope(request, "check")
     user = request.state.current_user
     tier_config, custom_labels = get_tier_config_helper(db, user)
     processed_text, detections, action = await asyncio.to_thread(pipeline.run, body.message, body.allowed_pii, body.ignored_values, tier_config, custom_labels)
-        
+
     import uuid
     try:
         real_sess_id = uuid.UUID(body.session_id)
@@ -511,7 +790,8 @@ def get_session(request: Request, session_id: str, db: Session = Depends(get_db)
     return SessionDetailResponse(
         id=str(session.id),
         title=session.title,
-        messages=msg_infos
+        messages=msg_infos,
+        model_used=session.model_used
     )
 
 @app.delete("/api/v1/sessions/{session_id}")
@@ -573,6 +853,7 @@ from app.models import BatchCheckRequest, BatchCheckResponse, CheckResult, Block
 @app.post("/api/v1/check_batch", response_model=BatchCheckResponse)
 @limiter.limit("10/minute")
 async def check_message_batch(request: Request, body: BatchCheckRequest, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
+    require_scope(request, "check")
     user = request.state.current_user
     tier_config, custom_labels = get_tier_config_helper(db, user)
 
@@ -1356,27 +1637,45 @@ async def upload_document(
     request: Request, 
     file: UploadFile = File(...), 
     session_id: str = Form("default_session"),
-    db: Session = Depends(get_db), 
+    db: Session = Depends(get_db),
     _: bool = Depends(verify_credentials)
 ):
+    require_scope(request, "check")
     user = request.state.current_user
     tier_config, custom_labels = get_tier_config_helper(db, user)
-    
+
+    # Reject oversized uploads early (before reading the whole body into memory).
+    # Default matches the nginx client_max_body_size (50MB) so the two layers agree.
+    max_bytes = int(os.getenv("MAX_UPLOAD_MB", "50")) * 1024 * 1024
+    content_length = request.headers.get("content-length")
+    if content_length and int(content_length) > max_bytes:
+        raise HTTPException(status_code=413, detail=f"File too large. Maximum size is {max_bytes // (1024 * 1024)}MB.")
+
     # Save the uploaded file temporarily
     suffix = os.path.splitext(file.filename)[1] if file.filename else ".tmp"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         tmp_path = tmp.name
         content = await file.read()
+        if len(content) > max_bytes:
+            tmp.close()
+            os.remove(tmp_path)
+            raise HTTPException(status_code=413, detail=f"File too large. Maximum size is {max_bytes // (1024 * 1024)}MB.")
         tmp.write(content)
         
     try:
-        # Extract text using markitdown
-        extracted_text = extract_text(tmp_path)
+        # Run extraction/OCR off the event loop — it's CPU-heavy and blocking
+        extracted_text = await asyncio.to_thread(extract_text, tmp_path)
     finally:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
-            
+
     if not extracted_text.strip():
+        ext = os.path.splitext(file.filename or "")[1].lower()
+        if ext in {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.webp'}:
+            raise HTTPException(
+                status_code=422,
+                detail="No readable text found in the image. It may be blurry, low-resolution, or contain no text. Try a clearer image.",
+            )
         raise HTTPException(status_code=400, detail="Could not extract text from document, or document was empty.")
         
     # Process the extracted text using the standard pipeline

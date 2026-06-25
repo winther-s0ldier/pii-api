@@ -37,6 +37,43 @@ type SessionInfo = {
   created_at: string;
 };
 
+type ModelInfo = {
+  id: string;
+  display: string;
+  tier: string;
+  provider: string;
+  is_default: boolean;
+};
+
+function ModelSelector({
+  models,
+  value,
+  onChange,
+  disabled,
+}: {
+  models: ModelInfo[];
+  value: string;
+  onChange: (id: string) => void;
+  disabled?: boolean;
+}) {
+  if (models.length <= 1) return null;
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      disabled={disabled}
+      title={disabled ? 'Model is locked for this conversation' : 'Choose a model'}
+      className="text-xs bg-transparent text-muted-foreground hover:text-foreground border border-border rounded-lg px-2 py-1.5 focus:ring-0 focus:outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+    >
+      {models.map((m) => (
+        <option key={m.id} value={m.id}>
+          {m.display}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const totalPassed = messages.filter(m => m.status === 'clear' && m.role === 'user').length;
@@ -58,6 +95,8 @@ export default function ChatPage() {
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const [loadingIndex, setLoadingIndex] = useState(0);
   const [stagedFile, setStagedFile] = useState<File | null>(null);
+  const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
+  const [selectedModel, setSelectedModel] = useState<string>('');
   const { getToken, isLoaded, isSignedIn, orgId, orgRole } = useAuth();
 
   const placeholders = [
@@ -124,6 +163,7 @@ export default function ChatPage() {
     if (isLoaded && isSignedIn) {
       setIsAuthenticated(true);
       loadSessions();
+      loadModels();
     }
   }, [isLoaded, isSignedIn]);
 
@@ -194,6 +234,23 @@ export default function ChatPage() {
     }
   };
 
+  const loadModels = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/models`, {
+        headers: { 'Authorization': `Bearer ${await getToken()}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const models: ModelInfo[] = data.models || [];
+        setAvailableModels(models);
+        const def = models.find(m => m.is_default) || models[0];
+        if (def) setSelectedModel(prev => prev || def.id);
+      }
+    } catch (err) {
+      console.error('Failed to load models', err);
+    }
+  };
+
   const loadSession = async (id: string) => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/sessions/${id}`, {
@@ -202,6 +259,7 @@ export default function ChatPage() {
       if (res.ok) {
         const data = await res.json();
         setCurrentSessionId(data.id);
+        if (data.model_used) setSelectedModel(data.model_used);
         setMessages(data.messages.map((m: any, i: number) => ({
           id: `db-${i}`,
           role: m.role === 'blocked' ? 'user' : m.role,
@@ -237,6 +295,9 @@ export default function ChatPage() {
     setCurrentSessionId(crypto.randomUUID());
     setMessages([]);
     setInput('');
+    // Reset model picker to the default so it isn't stuck on a loaded session's model
+    const def = availableModels.find(m => m.is_default) || availableModels[0];
+    if (def) setSelectedModel(def.id);
   };
 
   const togglePII = (type: string) => {
@@ -356,10 +417,23 @@ export default function ChatPage() {
     }
   };
 
+  const MAX_UPLOAD_MB = 50; // keep in sync with backend MAX_UPLOAD_MB / nginx client_max_body_size
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) setStagedFile(file);
     e.target.value = '';
+    if (!file) return;
+    if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
+      const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+      setMessages(prev => [...prev, {
+        id: crypto.randomUUID(),
+        role: 'user',
+        content: `"${file.name}" is ${sizeMb}MB, which exceeds the ${MAX_UPLOAD_MB}MB limit. Please upload a smaller file.`,
+        status: 'error'
+      }]);
+      return;
+    }
+    setStagedFile(file);
   };
 
   const uploadAndSendFile = async (file: File, userMessage: string) => {
@@ -454,7 +528,15 @@ export default function ChatPage() {
     } catch (err) {
       console.error(err);
       setIsLoading(false);
-      setMessages(prev => prev.filter(m => m.id !== previewId));
+      setMessages(prev => [
+        ...prev.filter(m => m.id !== previewId),
+        {
+          id: crypto.randomUUID(),
+          role: 'user',
+          content: `Couldn't process ${file.name}. The file may be too large or the server took too long. Please try again or use a smaller/clearer file.`,
+          status: 'error'
+        }
+      ]);
     }
   };
 
@@ -470,7 +552,7 @@ export default function ChatPage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${await getToken()}`
         },
-        body: JSON.stringify({ message: text, session_id: currentSessionId, allowed_pii: allowedPII, ignored_values: ignoredValues })
+        body: JSON.stringify({ message: text, session_id: currentSessionId, allowed_pii: allowedPII, ignored_values: ignoredValues, model: selectedModel || undefined })
       });
 
       if (!res.ok && res.status === 400) {
@@ -903,7 +985,8 @@ export default function ChatPage() {
                       rows={1}
                       disabled={isLoading}
                     />
-                    <button 
+                    <ModelSelector models={availableModels} value={selectedModel} onChange={setSelectedModel} />
+                    <button
                       onClick={handleSendMessage}
                       disabled={isSendDisabled}
                       className="p-2.5 bg-[#2A1F1A] hover:bg-black disabled:opacity-30 text-white rounded-xl flex items-center justify-center transition-all shrink-0"
@@ -1142,7 +1225,8 @@ export default function ChatPage() {
                   rows={1}
                   disabled={isLoading}
                 />
-                <button 
+                <ModelSelector models={availableModels} value={selectedModel} onChange={setSelectedModel} disabled={messages.length > 0} />
+                <button
                   onClick={handleSendMessage}
                   disabled={isSendDisabled}
                   className="p-2.5 bg-[#2A1F1A] hover:bg-black disabled:opacity-30 text-white rounded-xl flex items-center justify-center transition-all shrink-0"

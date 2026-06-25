@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Shield, LayoutDashboard, BookOpen, Users } from 'lucide-react';
+import { Shield, LayoutDashboard, BookOpen, Users, Cpu, Key } from 'lucide-react';
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/useDevAuth';
@@ -82,6 +82,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <Link id="admin-nav-dictionary" href="/admin/dictionary" className="flex items-center gap-3 px-3 py-2 text-sm text-[#444444] hover:bg-[#F5F5F5] hover:text-[#111111] rounded-md transition-colors">
             <BookOpen size={18} />
             <span className="font-medium">Dictionary</span>
+          </Link>
+          <div className="pt-6 pb-2 px-3 text-[11px] font-medium text-[#888888] uppercase tracking-wider">Integrations</div>
+          <Link id="admin-nav-models" href="/admin/models" className="flex items-center gap-3 px-3 py-2 text-sm text-[#444444] hover:bg-[#F5F5F5] hover:text-[#111111] rounded-md transition-colors">
+            <Cpu size={18} />
+            <span className="font-medium">Models</span>
+          </Link>
+          <Link id="admin-nav-api-keys" href="/admin/api-keys" className="flex items-center gap-3 px-3 py-2 text-sm text-[#444444] hover:bg-[#F5F5F5] hover:text-[#111111] rounded-md transition-colors">
+            <Key size={18} />
+            <span className="font-medium">API Keys</span>
           </Link>
           {orgId && (
             <>

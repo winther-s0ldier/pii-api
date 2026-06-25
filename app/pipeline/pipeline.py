@@ -1,6 +1,6 @@
 from typing import List, Tuple
 from app.pipeline.base import Detection
-from app.pipeline import regex_stage, entropy_stage, luhn_stage, code_stage
+from app.pipeline import regex_stage, entropy_stage, luhn_stage, code_stage, context_stage
 from app.config import TIER_BLOCK, TIER_REDACT, TIER_AUDIT, get_block_warning
 import requests
 import os
@@ -195,27 +195,19 @@ def run(text: str, allowed_pii: List[str] = None, ignored_values: List[str] = No
     filtered = []
     for d in merged:
         if d.type in block_set:
+            # Never drop BLOCK-tier detections on context — too risky
             filtered.append(d)
             continue
-            
+
         if text[d.start:d.end] in ignored_values:
             continue
-            
+
         if d.type in allowed_pii:
             continue
-            
-        if d.type in ["person", "organization", "ORG"]:
-            context_window = text[max(0, d.start - 30):d.end + 30].lower()
-            greetings = ["hi", "hello", "hey", "my name is", "i am", "i'm", "this is", "call me"]
-            if any(g in context_window for g in greetings):
-                continue
-                
-        if d.type in ["location", "date_time", "date", "time", "GPE", "LOC", "DATE", "TIME", "date time"]:
-            context_window = text[max(0, d.start - 40):d.end + 40].lower()
-            benign_terms = ["weather", "forecast", "temperature", "raining", "sunny", "time is", "i am from ", "i'm from ", "living in ", "i live in ", "visiting ", "born in ", "heading to ", "traveling to ", "how are you"]
-            if any(w in context_window for w in benign_terms):
-                continue
-                
+
+        if not context_stage.should_keep(text, d):
+            continue
+
         filtered.append(d)
     
     action = _classify_tier(filtered, tier_config)

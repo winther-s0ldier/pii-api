@@ -1,20 +1,25 @@
 import os
 import logging
+import threading
 import numpy as np
 from markitdown import MarkItDown
 
 logger = logging.getLogger(__name__)
 
-# ponytail: lazy singleton — EasyOCR takes ~3s to load, only pay that cost once
+# ponytail: lazy singleton — EasyOCR takes ~3s to load, only pay that cost once.
+# Lock guards against two concurrent first-uploads both building a reader.
 _ocr_reader = None
+_ocr_lock = threading.Lock()
 
 def _get_ocr_reader():
     global _ocr_reader
     if _ocr_reader is None:
-        import easyocr
-        import torch
-        _ocr_reader = easyocr.Reader(['en'], gpu=torch.cuda.is_available())
-        logger.info("EasyOCR reader loaded (gpu=%s)", torch.cuda.is_available())
+        with _ocr_lock:
+            if _ocr_reader is None:  # re-check inside the lock
+                import easyocr
+                import torch
+                _ocr_reader = easyocr.Reader(['en'], gpu=torch.cuda.is_available())
+                logger.info("EasyOCR reader loaded (gpu=%s)", torch.cuda.is_available())
     return _ocr_reader
 
 
