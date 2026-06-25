@@ -29,6 +29,9 @@ type Message = {
   ignoredValues?: string[];
   fileName?: string;
   pendingUserMessage?: string;
+  fileUrl?: string;            // blob URL of the uploaded file (current session only)
+  fileKind?: 'image' | 'doc';  // how to render the attachment
+  uploadBubbleId?: string;     // links a preview back to its upload bubble
 };
 
 type SessionInfo = {
@@ -438,13 +441,20 @@ export default function ChatPage() {
 
   const uploadAndSendFile = async (file: File, userMessage: string) => {
     setIsLoading(true);
-    const previewId = crypto.randomUUID();
-    
+    // Persistent "upload bubble" — shows the attachment and the user's typed message
+    // throughout the whole flow, instead of a throwaway "Extracting…" placeholder.
+    const uploadBubbleId = crypto.randomUUID();
+    const fileUrl = URL.createObjectURL(file);
+    const fileKind: 'image' | 'doc' = file.type.startsWith('image/') ? 'image' : 'doc';
+
     setMessages(prev => [...prev, {
-      id: previewId,
+      id: uploadBubbleId,
       role: 'user',
-      content: `Extracting ${file.name}...`,
-      status: 'sending'
+      content: userMessage,
+      status: 'sending',
+      fileName: file.name,
+      fileUrl,
+      fileKind,
     }]);
 
     const formData = new FormData();
@@ -455,22 +465,24 @@ export default function ChatPage() {
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/document/upload`, {
         method: 'POST',
-        headers: { 
+        headers: {
           'Authorization': `Bearer ${await getToken()}`
         },
         body: formData
       });
-      
+
       const data = await res.json();
-      setMessages(prev => prev.filter(m => m.id !== previewId));
 
       if (!res.ok) {
-        setMessages(prev => [...prev, {
-          id: crypto.randomUUID(),
-          role: 'user',
-          content: `Error extracting ${file.name}: ${data.detail || 'Unknown error'}`,
-          status: 'error'
-        }]);
+        setMessages(prev => [
+          ...prev.map(m => m.id === uploadBubbleId ? { ...m, status: 'error' as const } : m),
+          {
+            id: crypto.randomUUID(),
+            role: 'model',
+            content: `Couldn't process ${file.name}: ${data.detail || 'Unknown error'}`,
+            status: 'clear'
+          }
+        ]);
         setIsLoading(false);
         return;
       }
@@ -479,15 +491,9 @@ export default function ChatPage() {
         const uniqueTypes = Array.from(new Set((data.blocked_types || []).map((t: any) => t.type)));
         const typesStr = uniqueTypes.join(', ');
         const explanation = `I couldn't process this because it contains sensitive information (${typesStr}). For your security, the transmission was blocked.`;
-        
+
         setMessages(prev => [
-          ...prev, 
-          {
-            id: crypto.randomUUID(),
-            role: 'user',
-            content: `[Document: ${file.name}]`,
-            status: 'blocked'
-          },
+          ...prev.map(m => m.id === uploadBubbleId ? { ...m, status: 'blocked' as const } : m),
           {
             id: crypto.randomUUID(),
             role: 'model',
@@ -495,56 +501,71 @@ export default function ChatPage() {
             status: 'clear'
           }
         ]);
-        
+
         fetch(`${API_BASE_URL}/api/v1/sessions/save-blocked`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` },
           body: JSON.stringify({ session_id: currentSessionId, message: `[Document: ${file.name}]`, model_explanation: explanation })
         }).then(() => loadSessions()).catch(e => console.error('Failed to save blocked document', e));
-        
+
         setIsLoading(false);
         return;
       }
 
-      setIsLoading(false);
-
       if (data.action === 'CLEAN' || !data.redacted_types?.length) {
-        // No PII — send straight through like text CLEAN path
+        // No PII — send straight through, reusing the upload bubble as the user's turn
         const docText = `[Document: ${file.name}]\n${data.message}` + (userMessage.trim() ? `\n\n${userMessage.trim()}` : '');
-        await executeLLM(docText, allowedPII);
+        await executeLLM(docText, allowedPII, false, { existingBubbleId: uploadBubbleId, keepContent: true });
         return;
       }
 
-      // REDACT/AUDIT — show preview with redaction summary before sending
-      setMessages(prev => [...prev, {
-        id: crypto.randomUUID(),
-        role: 'preview',
-        content: data.message,
-        originalContent: data.message,
-        redactedTypes: data.redacted_types,
-        fileName: file.name,
-        pendingUserMessage: userMessage
-      }]);
+      setIsLoading(false);
+
+      // REDACT/AUDIT — mark the upload bubble redacted and show the approval preview
+      setMessages(prev => [
+        ...prev.map(m => m.id === uploadBubbleId ? { ...m, status: 'redacted' as const } : m),
+        {
+          id: crypto.randomUUID(),
+          role: 'preview',
+          content: data.message,
+          originalContent: data.message,
+          redactedTypes: data.redacted_types,
+          fileName: file.name,
+          pendingUserMessage: userMessage,
+          uploadBubbleId,
+        }
+      ]);
     } catch (err) {
       console.error(err);
       setIsLoading(false);
       setMessages(prev => [
-        ...prev.filter(m => m.id !== previewId),
+        ...prev.map(m => m.id === uploadBubbleId ? { ...m, status: 'error' as const } : m),
         {
           id: crypto.randomUUID(),
-          role: 'user',
+          role: 'model',
           content: `Couldn't process ${file.name}. The file may be too large or the server took too long. Please try again or use a smaller/clearer file.`,
-          status: 'error'
+          status: 'clear'
         }
       ]);
     }
   };
 
-  const executeLLM = async (text: string, ignoredValues: string[] = [], isPreRedacted: boolean = false) => {
+  const executeLLM = async (
+    text: string,
+    ignoredValues: string[] = [],
+    isPreRedacted: boolean = false,
+    opts: { existingBubbleId?: string; keepContent?: boolean } = {}
+  ) => {
+    const { existingBubbleId, keepContent } = opts;
     setIsLoading(true);
-    const tempId = crypto.randomUUID();
-    setMessages(prev => [...prev.filter(m => m.role !== 'preview'), { id: tempId, role: 'user', content: text, status: 'sending' }]);
-    
+    const tempId = existingBubbleId || crypto.randomUUID();
+    if (existingBubbleId) {
+      // Reuse the upload bubble (file + typed message) as the user's turn
+      setMessages(prev => prev.filter(m => m.role !== 'preview').map(m => m.id === tempId ? { ...m, status: 'sending' as const } : m));
+    } else {
+      setMessages(prev => [...prev.filter(m => m.role !== 'preview'), { id: tempId, role: 'user', content: text, status: 'sending' }]);
+    }
+
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/check`, {
         method: 'POST',
@@ -566,12 +587,13 @@ export default function ChatPage() {
         }
         const explanation = `I couldn't process this because it contains sensitive information (${typesStr}). For your security, the transmission was blocked.`;
 
-        // Remove the ghost 'sending' bubble, then add the blocked one
-        setMessages(prev => [
-          ...prev.filter(m => m.id !== tempId),
-          { id: crypto.randomUUID(), role: 'user' as const, content: text, status: 'blocked' as const, redactedTypes },
-          { id: crypto.randomUUID(), role: 'model' as const, content: explanation, status: 'clear' as const }
-        ]);
+        // Mark the user's turn as blocked (reuse the upload bubble if present), then add the explanation
+        setMessages(prev => {
+          const base = existingBubbleId
+            ? prev.map(m => m.id === tempId ? { ...m, status: 'blocked' as const, redactedTypes } : m)
+            : [...prev.filter(m => m.id !== tempId), { id: crypto.randomUUID(), role: 'user' as const, content: text, status: 'blocked' as const, redactedTypes }];
+          return [...base, { id: crypto.randomUUID(), role: 'model' as const, content: explanation, status: 'clear' as const }];
+        });
         
         fetch(`${API_BASE_URL}/api/v1/sessions/save-blocked`, {
           method: 'POST',
@@ -611,11 +633,12 @@ export default function ChatPage() {
               setMessages(prev => {
                 const mapped = prev.map(m => m.id === tempId ? {
                   ...m,
-                  content: data.message,
+                  // For a reused upload bubble, keep its file + typed message; don't overwrite with doc text
+                  content: keepContent ? m.content : data.message,
                   // If the message was pre-redacted before sending, always show 'redacted'
                   // (backend sees clean text and returns CLEAN, but the original had PII)
                   status: (isPreRedacted || action === 'REDACT') ? ('redacted' as const) : ('clear' as const),
-                  redactedTypes: data.redacted_types
+                  redactedTypes: keepContent ? m.redactedTypes : data.redacted_types
                 } : m);
                 return [...mapped, { id: modelMsgId, role: 'model', content: '', status: 'sending' as const }];
               });
@@ -889,8 +912,8 @@ export default function ChatPage() {
           "absolute top-0 left-0 w-[60px] h-full hidden md:flex flex-col items-center py-3 gap-4 transition-opacity duration-200",
           !isSidebarOpen ? "opacity-100 delay-100" : "opacity-0 pointer-events-none"
         )}>
-          <button onClick={() => setIsSidebarOpen(true)} className="p-2 hover:bg-black/5 rounded-lg text-muted-foreground hover:text-foreground transition-all" title="Open sidebar">
-            <PanelLeft size={20} />
+          <button onClick={() => setIsSidebarOpen(true)} className="p-1.5 hover:bg-black/5 rounded-lg transition-all" title="Expand sidebar">
+            <img src="/logo-t.png" alt="ADOPSHUN AI" className="w-7 h-7 object-contain" />
           </button>
           <button onClick={startNewChat} className="p-2 hover:bg-black/5 rounded-lg text-muted-foreground hover:text-foreground transition-all" title="New chat">
             <Plus size={20} />
@@ -1113,7 +1136,7 @@ export default function ChatPage() {
                                   })();
                                 } else {
                                   const docText = `[Document: ${fileName}]\n${docContent}` + (pendingMsg.trim() ? `\n\n${pendingMsg.trim()}` : '');
-                                  executeLLM(docText, [], true);
+                                  executeLLM(docText, [], true, msg.uploadBubbleId ? { existingBubbleId: msg.uploadBubbleId, keepContent: true } : {});
                                 }
                               } else {
                                 executeLLM(msg.content, msg.ignoredValues || [], true);
@@ -1145,7 +1168,32 @@ export default function ChatPage() {
                              </div>
                            )
                         ) : (
-                           <div>{renderMessageContent(msg.id, msg.content, msg.redactedTypes, msg.role, msg.status)}</div>
+                           <div>
+                             {msg.fileUrl && msg.fileKind === 'image' && (
+                               <img
+                                 src={msg.fileUrl}
+                                 alt={msg.fileName || 'attachment'}
+                                 onClick={() => window.open(msg.fileUrl, '_blank')}
+                                 className="max-h-48 rounded-lg mb-2 cursor-zoom-in border border-white/20 object-cover"
+                                 title="Click to view full size"
+                               />
+                             )}
+                             {msg.fileUrl && msg.fileKind === 'doc' && (
+                               <a
+                                 href={msg.fileUrl}
+                                 download={msg.fileName}
+                                 className="flex items-center gap-2 mb-2 px-3 py-2 rounded-lg bg-black/10 hover:bg-black/20 transition-colors no-underline"
+                                 title="Click to download"
+                               >
+                                 <Paperclip size={15} className="shrink-0" />
+                                 <span className="text-sm font-medium truncate">{msg.fileName}</span>
+                               </a>
+                             )}
+                             {/* attachment with no extracted-text body shows just the filename label */}
+                             {msg.content
+                               ? renderMessageContent(msg.id, msg.content, msg.redactedTypes, msg.role, msg.status)
+                               : (!msg.fileUrl && <span className="opacity-60">{msg.fileName}</span>)}
+                           </div>
                         )}
                       </div>
                     )}
