@@ -156,6 +156,7 @@ class StatLog (Base ):
     detected_types =Column (JSONB )
     flagged_sequences =Column (JSONB )
     original_message =Column (Text )
+    tokens =Column (Integer )
     created_at =Column (DateTime (timezone =True ),nullable =False ,server_default =func .now ())
 
 class CustomLabel (Base ):

@@ -143,11 +143,16 @@ async def stream_response(
     org=None,
     system_prompt: str = SYSTEM_PROMPT,
     timeout: int = 45,
+    usage_out: dict = None,
 ) -> AsyncGenerator[str, None]:
     """
     Stream the assistant reply as text chunks. `history` is a list of DB
     Message objects (chronological, excluding the new message).
     Raises on provider error — caller decides how to surface it.
+
+    If `usage_out` is provided, the provider-reported token usage is written into
+    it once the final chunk arrives: {"total_tokens": int, ...}. If the provider
+    does not report usage (e.g. an interrupted stream), it is left untouched.
     """
     messages = _to_chat_messages(history, system_prompt, new_message)
     kwargs = _call_kwargs(model_id, org)
@@ -160,9 +165,15 @@ async def stream_response(
         messages=messages,
         stream=True,
         timeout=timeout,
+        stream_options={"include_usage": True},  # ask the provider for token counts
         **kwargs,
     )
     async for chunk in resp:
+        usage = getattr(chunk, "usage", None)
+        if usage is not None and usage_out is not None:
+            usage_out["total_tokens"] = getattr(usage, "total_tokens", None)
+            usage_out["prompt_tokens"] = getattr(usage, "prompt_tokens", None)
+            usage_out["completion_tokens"] = getattr(usage, "completion_tokens", None)
         try:
             delta = chunk.choices[0].delta.content
         except (AttributeError, IndexError):

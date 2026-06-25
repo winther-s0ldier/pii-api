@@ -478,9 +478,10 @@ async def check_message(request: Request, body: CheckRequest, db: Session = Depe
         db.add(user_msg)
         db.commit()
 
-    # Resolve which LLM to use and lock it to the session
+    # Resolve which LLM to use. The user may switch models mid-conversation, so we
+    # record the most recently used model on the session (used to restore the picker).
     resolved_model = llm_client.resolve_model(body.model, session=db_session, user=user, org=org)
-    if db_session and not db_session.model_used:
+    if db_session and db_session.model_used != resolved_model:
         db_session.model_used = resolved_model
         db.commit()
 
@@ -501,10 +502,12 @@ async def check_message(request: Request, body: CheckRequest, db: Session = Depe
             prior_history = history[:-1]   # exclude the message we just stored
 
             try:
+                usage_out = {}
+
                 async def _collect_stream():
                     parts = []
                     async for text in llm_client.stream_response(
-                        resolved_model, prior_history, processed_text, org=org
+                        resolved_model, prior_history, processed_text, org=org, usage_out=usage_out
                     ):
                         parts.append(text)
                     return parts
@@ -520,6 +523,11 @@ async def check_message(request: Request, body: CheckRequest, db: Session = Depe
 
                 model_msg = ChatMessage(session_id=real_sess_id, role="model", content=llm_reply)
                 db.add(model_msg)
+                # Record provider-reported token usage on the stat row (left NULL if the
+                # provider did not return usage — those calls are flagged in the dashboard)
+                if usage_out.get("total_tokens"):
+                    stat_log.tokens = usage_out["total_tokens"]
+                    db.add(stat_log)
                 db.commit()
             except Exception as e:
                 yield f"data: {json.dumps({'type': 'error', 'text': f'Error calling model: {str(e)}'})}\n\n"
@@ -1040,6 +1048,16 @@ def fetch_stats(db, current_user, is_base_user: bool, user_id=None, start_time=N
         
     total = query.with_entities(func.count(StatLog.id)).scalar() or 0
     actions = query.with_entities(StatLog.action, func.count(StatLog.id)).group_by(StatLog.action).all()
+
+    # Provider-reported token usage. Rows left NULL are interactive chats whose
+    # provider did not return a usage figure (interrupted/failed) — we flag, not estimate.
+    total_tokens = query.with_entities(func.coalesce(func.sum(StatLog.tokens), 0)).scalar() or 0
+    untracked = query.filter(
+        StatLog.tokens.is_(None),
+        StatLog.action != "BLOCK",
+        StatLog.api_key_id.is_(None),
+    ).with_entities(func.count(StatLog.id)).scalar() or 0
+
     type_counts = Counter()
     seq_counts = Counter()
     for log in query.with_entities(StatLog.detected_types, StatLog.flagged_sequences).all():
@@ -1065,7 +1083,9 @@ def fetch_stats(db, current_user, is_base_user: bool, user_id=None, start_time=N
         total_requests=total,
         actions=[StatCount(name=a[0], count=a[1]) for a in actions],
         detected_types=[StatCount(name=k, count=v) for k, v in type_counts.items()],
-        top_sequences=[StatCount(name=k, count=v) for k, v in seq_counts.most_common(10)]
+        top_sequences=[StatCount(name=k, count=v) for k, v in seq_counts.most_common(10)],
+        total_tokens=int(total_tokens),
+        tokens_incomplete=untracked > 0,
     )
 
 @app.get("/api/v1/admin/users")

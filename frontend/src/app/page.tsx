@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Shield, Plus, PanelLeft, Send, CheckCircle2, ShieldAlert, X, ShieldBan, MessageSquare, Trash2, HatGlasses, Paperclip, Eye, EyeOff } from 'lucide-react';
+import { Shield, Plus, PanelLeft, Send, CheckCircle2, ShieldAlert, X, ShieldBan, MessageSquare, Trash2, HatGlasses, Paperclip, Eye, EyeOff, ChevronDown } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { driver } from "driver.js";
 import "driver.js/dist/driver.css";
@@ -52,28 +52,28 @@ function ModelSelector({
   models,
   value,
   onChange,
-  disabled,
 }: {
   models: ModelInfo[];
   value: string;
   onChange: (id: string) => void;
-  disabled?: boolean;
 }) {
   if (models.length <= 1) return null;
   return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      disabled={disabled}
-      title={disabled ? 'Model is locked for this conversation' : 'Choose a model'}
-      className="text-xs bg-transparent text-muted-foreground hover:text-foreground border border-border rounded-lg px-2 py-1.5 focus:ring-0 focus:outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-    >
-      {models.map((m) => (
-        <option key={m.id} value={m.id}>
-          {m.display}
-        </option>
-      ))}
-    </select>
+    <div className="relative inline-flex items-center shrink-0">
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        title="Choose a model"
+        className="appearance-none bg-transparent text-xs font-medium text-muted-foreground hover:text-foreground pl-2 pr-6 py-1.5 rounded-lg hover:bg-black/5 focus:outline-none cursor-pointer transition-colors"
+      >
+        {models.map((m) => (
+          <option key={m.id} value={m.id}>
+            {m.display}
+          </option>
+        ))}
+      </select>
+      <ChevronDown size={13} className="absolute right-1.5 pointer-events-none text-muted-foreground" />
+    </div>
   );
 }
 
@@ -1273,7 +1273,7 @@ export default function ChatPage() {
                   rows={1}
                   disabled={isLoading}
                 />
-                <ModelSelector models={availableModels} value={selectedModel} onChange={setSelectedModel} disabled={messages.length > 0} />
+                <ModelSelector models={availableModels} value={selectedModel} onChange={setSelectedModel} />
                 <button
                   onClick={handleSendMessage}
                   disabled={isSendDisabled}

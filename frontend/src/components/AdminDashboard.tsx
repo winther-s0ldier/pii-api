@@ -9,7 +9,7 @@ import "driver.js/dist/driver.css";
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 type StatCount = { name: string; count: number };
-type StatsResponse = { total_requests: number; actions: StatCount[]; detected_types: StatCount[]; top_sequences: StatCount[] };
+type StatsResponse = { total_requests: number; actions: StatCount[]; detected_types: StatCount[]; top_sequences: StatCount[]; total_tokens?: number; tokens_incomplete?: boolean };
 type TierConfigResponse = { user_id: string; tier_block: string[]; tier_redact: string[]; tier_audit: string[] };
 type UserLog = { id: number; action: string; detected_types: string[]; flagged_sequences: string[]; original_message?: string; created_at: string };
 
@@ -271,6 +271,20 @@ export default function AdminDashboard() {
               <div className="bg-[#FAFAFA] border border-[#EAEAEA] p-4 rounded-lg">
                 <p className="text-[11px] text-[#888888] uppercase tracking-wider font-semibold mb-1">Total Requests</p>
                 <p className="text-3xl font-semibold tracking-tight">{stats.total_requests}</p>
+                <div className="mt-3 pt-3 border-t border-[#EAEAEA]">
+                  <p className="text-[11px] text-[#888888] uppercase tracking-wider font-semibold mb-1">Gemini Tokens Used</p>
+                  <p className="text-xl font-semibold tracking-tight">
+                    {(stats.total_tokens ?? 0).toLocaleString()}
+                    {stats.tokens_incomplete && <span className="text-[#888888]">*</span>}
+                  </p>
+                  {stats.tokens_incomplete && (
+                    <p className="text-[10px] text-[#999999] mt-1 leading-snug">
+                      * A few requests aren&apos;t counted. When a reply is interrupted or fails, the
+                      model doesn&apos;t report its token count, so your actual Gemini bill may be
+                      slightly higher than this figure.
+                    </p>
+                  )}
+                </div>
               </div>
               <div className="bg-[#FAFAFA] border border-[#EAEAEA] p-4 rounded-lg">
                 <p className="text-[11px] text-[#888888] uppercase tracking-wider font-semibold mb-1">Actions Taken</p>

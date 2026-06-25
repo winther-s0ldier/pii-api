@@ -135,6 +135,8 @@ class StatsResponse(BaseModel):
     actions: List[StatCount]
     detected_types: List[StatCount]
     top_sequences: List[StatCount] = Field(default_factory=list)
+    total_tokens: int = 0
+    tokens_incomplete: bool = False
 
 class CustomLabelBase(BaseModel):
     name: str
