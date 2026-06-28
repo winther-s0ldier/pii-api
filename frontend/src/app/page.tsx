@@ -9,6 +9,8 @@ import { driver } from "driver.js";
 import "driver.js/dist/driver.css";
 import { SignIn, UserButton } from "@clerk/nextjs";
 import { useAuth } from "@/lib/useDevAuth";
+import { tokenizeText, detokenize, loadVault, mergeVault, clearVault, type Vault } from "@/lib/tokenization";
+import { storeFile, getFile, clearSessionFiles } from "@/lib/imageStore";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -32,6 +34,8 @@ type Message = {
   fileUrl?: string;            // blob URL of the uploaded file (current session only)
   fileKind?: 'image' | 'doc';  // how to render the attachment
   uploadBubbleId?: string;     // links a preview back to its upload bubble
+  tokenized?: string;          // server-built tokenised doc text (reversible tokenisation)
+  vault?: Vault;               // token -> real value for the doc (browser-only)
 };
 
 type SessionInfo = {
@@ -77,6 +81,8 @@ function ModelSelector({
   );
 }
 
+const LAST_SESSION_KEY = 'adpsh_last_session_id';
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const totalPassed = messages.filter(m => m.status === 'clear' && m.role === 'user').length;
@@ -89,12 +95,6 @@ export default function ChatPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [allowedPII, setAllowedPII] = useState<string[]>([]);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [authHeader, setAuthHeader] = useState('');
-  const [loginUser, setLoginUser] = useState('');
-  const [loginPass, setLoginPass] = useState('');
-  const [loginError, setLoginError] = useState('');
-  const [keepLoggedIn, setKeepLoggedIn] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const [loadingIndex, setLoadingIndex] = useState(0);
   const [stagedFile, setStagedFile] = useState<File | null>(null);
@@ -145,6 +145,7 @@ export default function ChatPage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const emptyFileInputRef = useRef<HTMLInputElement>(null);
   const bottomFileInputRef = useRef<HTMLInputElement>(null);
+  const sessionRestoredRef = useRef(false);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -155,19 +156,28 @@ export default function ChatPage() {
   }, [messages]);
 
   useEffect(() => {
-    setCurrentSessionId(crypto.randomUUID());
+    const savedId = localStorage.getItem(LAST_SESSION_KEY);
+    setCurrentSessionId(savedId || crypto.randomUUID());
     if (window.innerWidth < 768) {
       setIsSidebarOpen(false);
     }
   }, []);
 
-  // Load sessions as soon as Clerk confirms the user is signed in
   useEffect(() => {
-    if (isLoaded && isSignedIn) {
-      setIsAuthenticated(true);
-      loadSessions();
-      loadModels();
-    }
+    if (!isLoaded || !isSignedIn) return;
+    setIsAuthenticated(true);
+    loadModels();
+    loadSessions().then(list => {
+      if (sessionRestoredRef.current) return;
+      sessionRestoredRef.current = true;
+      const savedId = localStorage.getItem(LAST_SESSION_KEY);
+      if (!savedId) return;
+      if (list.some(s => s.id === savedId)) {
+        loadSession(savedId);
+      } else {
+        localStorage.removeItem(LAST_SESSION_KEY);
+      }
+    });
   }, [isLoaded, isSignedIn]);
 
   useEffect(() => {
@@ -216,25 +226,25 @@ export default function ChatPage() {
     }
   };
 
-  const loadSessions = async () => {
-
+  const loadSessions = async (): Promise<SessionInfo[]> => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/sessions`, {
         headers: { 'Authorization': `Bearer ${await getToken()}` }
       });
       if (res.status === 401) {
-        localStorage.removeItem('basic_auth');
-        localStorage.removeItem('basic_auth_expiry');
         setIsAuthenticated(false);
-        return;
+        return [];
       }
       if (res.ok) {
         const data = await res.json();
-        setSessions(data.sessions || []);
+        const list: SessionInfo[] = data.sessions || [];
+        setSessions(list);
+        return list;
       }
     } catch (err) {
       console.error('Failed to load sessions', err);
     }
+    return [];
   };
 
   const loadModels = async () => {
@@ -262,16 +272,31 @@ export default function ChatPage() {
       if (res.ok) {
         const data = await res.json();
         setCurrentSessionId(data.id);
+        localStorage.setItem(LAST_SESSION_KEY, data.id);
         if (data.model_used) setSelectedModel(data.model_used);
-        setMessages(data.messages.map((m: any, i: number) => ({
-          id: `db-${i}`,
-          role: m.role === 'blocked' ? 'user' : m.role,
-          content: m.content,
-          status: m.role === 'blocked'
-            ? 'blocked'
-            : (m.redacted_types && m.redacted_types.length > 0 ? 'redacted' : 'clear'),
-          redactedTypes: m.redacted_types
-        })));
+        const vault = loadVault(data.id);
+        const mappedMessages = await Promise.all(
+          (data.messages as any[]).map(async (m, i) => {
+            const base: Message = {
+              id: `db-${i}`,
+              role: m.role === 'blocked' ? 'user' : m.role,
+              content: detokenize(m.content, vault),
+              status: m.role === 'blocked'
+                ? 'blocked'
+                : (m.redacted_types?.length > 0 ? 'redacted' : 'clear'),
+              redactedTypes: m.redacted_types,
+            };
+            const docMatch = m.role !== 'model' && (m.content as string)?.match(/^\[Document: (.+?)\]/);
+            if (docMatch) {
+              const stored = await getFile(data.id, docMatch[1]);
+              if (stored) {
+                return { ...base, fileName: docMatch[1], fileUrl: URL.createObjectURL(stored.blob), fileKind: stored.fileKind };
+              }
+            }
+            return base;
+          })
+        );
+        setMessages(mappedMessages);
       }
     } catch (err) {
       console.error("Failed to load session", err);
@@ -286,6 +311,8 @@ export default function ChatPage() {
         headers: { 'Authorization': `Bearer ${await getToken()}` }
       });
       setSessions(prev => prev.filter(s => s.id !== id));
+      clearVault(id);
+      clearSessionFiles(id);
       if (currentSessionId === id) {
         startNewChat();
       }
@@ -295,10 +322,10 @@ export default function ChatPage() {
   };
 
   const startNewChat = () => {
+    localStorage.removeItem(LAST_SESSION_KEY);
     setCurrentSessionId(crypto.randomUUID());
     setMessages([]);
     setInput('');
-    // Reset model picker to the default so it isn't stuck on a loaded session's model
     const def = availableModels.find(m => m.is_default) || availableModels[0];
     if (def) setSelectedModel(def.id);
   };
@@ -327,6 +354,7 @@ export default function ChatPage() {
 
   const handleSendMessage = async () => {
     if (isSendDisabled) return;
+    localStorage.setItem(LAST_SESSION_KEY, currentSessionId);
 
     if (stagedFile) {
         const file = stagedFile;
@@ -345,7 +373,6 @@ export default function ChatPage() {
 
     const previewId = crypto.randomUUID();
     
-    // Add temporary checking message
     setMessages(prev => [...prev, {
       id: previewId,
       role: 'user',
@@ -387,12 +414,11 @@ export default function ChatPage() {
             status: 'clear'
           }
         ]);
-        // Persist to DB so blocked messages survive session restore
         fetch(`${API_BASE_URL}/api/v1/sessions/save-blocked`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` },
           body: JSON.stringify({ session_id: currentSessionId, message: originalText, blocked_types: data.blocked_types })
-        }).then(() => loadSessions()).catch(e => console.error('Failed to save blocked message', e));
+        }).then(() => { loadSessions(); localStorage.setItem(LAST_SESSION_KEY, currentSessionId); }).catch(e => console.error('Failed to save blocked message', e));
         setIsLoading(false);
         return;
       }
@@ -402,7 +428,6 @@ export default function ChatPage() {
         return;
       }
 
-      // REDACT - show preview
       setMessages(prev => [...prev, {
         id: crypto.randomUUID(),
         role: 'preview',
@@ -440,12 +465,12 @@ export default function ChatPage() {
   };
 
   const uploadAndSendFile = async (file: File, userMessage: string) => {
+    localStorage.setItem(LAST_SESSION_KEY, currentSessionId);
     setIsLoading(true);
-    // Persistent "upload bubble" — shows the attachment and the user's typed message
-    // throughout the whole flow, instead of a throwaway "Extracting…" placeholder.
     const uploadBubbleId = crypto.randomUUID();
     const fileUrl = URL.createObjectURL(file);
     const fileKind: 'image' | 'doc' = file.type.startsWith('image/') ? 'image' : 'doc';
+    storeFile(currentSessionId, file.name, file);
 
     setMessages(prev => [...prev, {
       id: uploadBubbleId,
@@ -472,6 +497,8 @@ export default function ChatPage() {
       });
 
       const data = await res.json();
+
+      if (res.ok) localStorage.setItem(LAST_SESSION_KEY, currentSessionId);
 
       if (!res.ok) {
         setMessages(prev => [
@@ -506,14 +533,13 @@ export default function ChatPage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` },
           body: JSON.stringify({ session_id: currentSessionId, message: `[Document: ${file.name}]`, model_explanation: explanation })
-        }).then(() => loadSessions()).catch(e => console.error('Failed to save blocked document', e));
+        }).then(() => { loadSessions(); localStorage.setItem(LAST_SESSION_KEY, currentSessionId); }).catch(e => console.error('Failed to save blocked document', e));
 
         setIsLoading(false);
         return;
       }
 
       if (data.action === 'CLEAN' || !data.redacted_types?.length) {
-        // No PII — send straight through, reusing the upload bubble as the user's turn
         const docText = `[Document: ${file.name}]\n${data.message}` + (userMessage.trim() ? `\n\n${userMessage.trim()}` : '');
         await executeLLM(docText, allowedPII, false, { existingBubbleId: uploadBubbleId, keepContent: true });
         return;
@@ -521,7 +547,6 @@ export default function ChatPage() {
 
       setIsLoading(false);
 
-      // REDACT/AUDIT — mark the upload bubble redacted and show the approval preview
       setMessages(prev => [
         ...prev.map(m => m.id === uploadBubbleId ? { ...m, status: 'redacted' as const } : m),
         {
@@ -533,6 +558,8 @@ export default function ChatPage() {
           fileName: file.name,
           pendingUserMessage: userMessage,
           uploadBubbleId,
+          tokenized: data.tokenized,
+          vault: data.vault,
         }
       ]);
     } catch (err) {
@@ -554,13 +581,13 @@ export default function ChatPage() {
     text: string,
     ignoredValues: string[] = [],
     isPreRedacted: boolean = false,
-    opts: { existingBubbleId?: string; keepContent?: boolean } = {}
+    opts: { existingBubbleId?: string; keepContent?: boolean; vault?: Vault; displayText?: string } = {}
   ) => {
-    const { existingBubbleId, keepContent } = opts;
+    const { existingBubbleId, keepContent, vault, displayText } = opts;
+    if (vault) mergeVault(currentSessionId, vault);  // browser-only; never sent to server
     setIsLoading(true);
     const tempId = existingBubbleId || crypto.randomUUID();
     if (existingBubbleId) {
-      // Reuse the upload bubble (file + typed message) as the user's turn
       setMessages(prev => prev.filter(m => m.role !== 'preview').map(m => m.id === tempId ? { ...m, status: 'sending' as const } : m));
     } else {
       setMessages(prev => [...prev.filter(m => m.role !== 'preview'), { id: tempId, role: 'user', content: text, status: 'sending' }]);
@@ -587,7 +614,6 @@ export default function ChatPage() {
         }
         const explanation = `I couldn't process this because it contains sensitive information (${typesStr}). For your security, the transmission was blocked.`;
 
-        // Mark the user's turn as blocked (reuse the upload bubble if present), then add the explanation
         setMessages(prev => {
           const base = existingBubbleId
             ? prev.map(m => m.id === tempId ? { ...m, status: 'blocked' as const, redactedTypes } : m)
@@ -599,7 +625,7 @@ export default function ChatPage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` },
           body: JSON.stringify({ session_id: currentSessionId, message: text, model_explanation: explanation, blocked_types: errorData.detail?.blocked_types })
-        }).then(() => loadSessions()).catch(e => console.error('Failed to save blocked message', e));
+        }).then(() => { loadSessions(); localStorage.setItem(LAST_SESSION_KEY, currentSessionId); }).catch(e => console.error('Failed to save blocked message', e));
 
         setIsLoading(false);
         return;
@@ -613,6 +639,7 @@ export default function ChatPage() {
       let action = '';
       let modelMsgId = crypto.randomUUID();
       let hasAddedModelMsg = false;
+      let rawModelReply = '';  // accumulates tokenised reply; we de-tokenise for display
 
       while (true) {
         const { done, value } = await reader.read();
@@ -633,10 +660,8 @@ export default function ChatPage() {
               setMessages(prev => {
                 const mapped = prev.map(m => m.id === tempId ? {
                   ...m,
-                  // For a reused upload bubble, keep its file + typed message; don't overwrite with doc text
-                  content: keepContent ? m.content : data.message,
-                  // If the message was pre-redacted before sending, always show 'redacted'
-                  // (backend sees clean text and returns CLEAN, but the original had PII)
+                  content: keepContent ? m.content : (displayText ?? data.message),
+                  // isPreRedacted: backend saw clean tokens but original had PII — keep 'redacted' badge
                   status: (isPreRedacted || action === 'REDACT') ? ('redacted' as const) : ('clear' as const),
                   redactedTypes: keepContent ? m.redactedTypes : data.redacted_types
                 } : m);
@@ -644,7 +669,9 @@ export default function ChatPage() {
               });
               hasAddedModelMsg = true;
             } else if (data.type === 'chunk') {
-              setMessages(prev => prev.map(m => m.id === modelMsgId ? { ...m, content: m.content + data.text, status: 'clear' as const } : m));
+              rawModelReply += data.text;
+              const display = vault ? detokenize(rawModelReply, vault) : rawModelReply;
+              setMessages(prev => prev.map(m => m.id === modelMsgId ? { ...m, content: display, status: 'clear' as const } : m));
             }
           }
           boundary = buffer.indexOf('\n\n');
@@ -652,6 +679,7 @@ export default function ChatPage() {
       }
       
       loadSessions();
+      localStorage.setItem(LAST_SESSION_KEY, currentSessionId);
 
     } catch (err) {
       console.error(err);
@@ -680,7 +708,6 @@ export default function ChatPage() {
       return displayContent;
     }
 
-    // Blocked messages: find actual PII values in the original text and strike them through
     if (status === 'blocked') {
       let parts: (string | React.ReactNode)[] = [displayContent];
       redactedTypes.forEach((rt, rtIdx) => {
@@ -761,37 +788,6 @@ export default function ChatPage() {
       return m;
     }));
   };
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoginError('');
-    
-    const token = btoa(`${loginUser}:${loginPass}`);
-    
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/sessions`, {
-        headers: { 'Authorization': `Basic ${token}` }
-      });
-      
-      if (!res.ok) {
-        throw new Error('Invalid credentials');
-      }
-      
-      if (keepLoggedIn) {
-        localStorage.setItem('basic_auth', token);
-        localStorage.setItem('basic_auth_expiry', (Date.now() + 2 * 60 * 60 * 1000).toString());
-      }
-      
-      setAuthHeader(token);
-      setIsAuthenticated(true);
-      
-      const data = await res.json();
-      setSessions(data.sessions || []);
-    } catch (err) {
-      setLoginError('Invalid username or password');
-    }
-  };
-
 
   if (!isLoaded) return <div className="h-screen flex items-center justify-center bg-[#FAF9F5]">Loading Secure Environment...</div>;
   
@@ -1056,7 +1052,6 @@ export default function ChatPage() {
                         </p>
 
                         {msg.fileName ? (
-                          // Document preview — compact redaction list
                           <div className="mb-4">
                             <div className="flex items-center gap-2 mb-3 pb-3 border-b border-border">
                               <Paperclip size={13} className="text-muted-foreground shrink-0" />
@@ -1066,7 +1061,6 @@ export default function ChatPage() {
                               <div className="space-y-2">
                                 <p className="text-xs text-muted-foreground">The following PII will be redacted before sending:</p>
                                 {(() => {
-                                  // Deduplicate by type+value, track count
                                   const seen = new Map<string, { rt: RedactedType; count: number }>();
                                   for (const rt of msg.redactedTypes!) {
                                     const key = `${rt.type}::${rt.value}`;
@@ -1096,7 +1090,6 @@ export default function ChatPage() {
                             )}
                           </div>
                         ) : (
-                          // Text preview — inline [TYPE] tags
                           <div className="text-[15px] leading-relaxed mb-4">
                             {renderMessageContent(msg.id, msg.content, msg.redactedTypes, msg.role)}
                           </div>
@@ -1116,10 +1109,10 @@ export default function ChatPage() {
                             onClick={() => {
                               setMessages(prev => prev.filter(m => m.id !== msg.id));
                               if (msg.fileName) {
-                                // Document approve — run chunking path
                                 const CHUNK_LIMIT = 100000;
                                 const MAX_CHUNKS = 5;
-                                const docContent = msg.content;
+                                const docContent = msg.tokenized || msg.content;  // prefer server-built tokens when available
+                                const docVault = msg.vault;
                                 const fileName = msg.fileName;
                                 const pendingMsg = msg.pendingUserMessage || '';
                                 if (docContent.length > CHUNK_LIMIT) {
@@ -1130,16 +1123,21 @@ export default function ChatPage() {
                                   }
                                   (async () => {
                                     for (let i = 0; i < chunks.length; i++) {
-                                      await executeLLM(`[Document: ${fileName} (Part ${i+1}/${chunks.length})]\n${chunks[i]}`, [], true);
+                                      await executeLLM(`[Document: ${fileName} (Part ${i+1}/${chunks.length})]\n${chunks[i]}`, [], true, { vault: docVault });
                                     }
                                     if (pendingMsg.trim()) await executeLLM(pendingMsg.trim(), [], false);
                                   })();
                                 } else {
                                   const docText = `[Document: ${fileName}]\n${docContent}` + (pendingMsg.trim() ? `\n\n${pendingMsg.trim()}` : '');
-                                  executeLLM(docText, [], true, msg.uploadBubbleId ? { existingBubbleId: msg.uploadBubbleId, keepContent: true } : {});
+                                  executeLLM(docText, [], true, { vault: docVault, ...(msg.uploadBubbleId ? { existingBubbleId: msg.uploadBubbleId, keepContent: true } : {}) });
                                 }
                               } else {
-                                executeLLM(msg.content, msg.ignoredValues || [], true);
+                                if (msg.originalContent && msg.redactedTypes && msg.redactedTypes.length > 0) {
+                                  const { text: tokenized, vault } = tokenizeText(msg.originalContent, msg.redactedTypes);
+                                  executeLLM(tokenized, msg.ignoredValues || [], true, { vault, displayText: msg.content });
+                                } else {
+                                  executeLLM(msg.content, msg.ignoredValues || [], true);
+                                }
                               }
                             }}
                             className="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 rounded-lg flex items-center gap-2 transition-opacity"

@@ -20,6 +20,7 @@ from app.pipeline import pipeline
 from app.pipeline import regex_stage
 from app.config import get_block_warning, TIER_BLOCK, TIER_REDACT, TIER_AUDIT
 from app import llm_client
+from app import tokenization
 from app.models_db import init_db, get_db, Session as ChatSession, Message as ChatMessage, User, StatLog, CustomLabel, Organization
 import json
 from collections import Counter
@@ -71,7 +72,6 @@ def verify_credentials(request: Request, bearer_creds: HTTPAuthorizationCredenti
         request.state.clerk_user_id = "dev@local"
         return True
 
-    # API key authentication (programmatic access, no Clerk JWT)
     if bearer_creds and bearer_creds.credentials.startswith("adpsh_"):
         import hashlib
         from datetime import datetime, timezone
@@ -103,14 +103,16 @@ def verify_credentials(request: Request, bearer_creds: HTTPAuthorizationCredenti
         if request.url.path.startswith("/api/v1/admin"):
             raise HTTPException(status_code=403, detail="API keys cannot access admin endpoints")
 
-        # Per-key rate limit (covers every endpoint an API key can reach)
-        enforce_api_rate_limit(str(api_key.id), api_key.rate_limit_per_min or 60)
+        limit = api_key.rate_limit_per_min or 60
+        remaining = enforce_api_rate_limit(str(api_key.id), limit)
+        request.state.rl_limit = limit
+        request.state.rl_remaining = remaining
+        request.state.rl_reset = int(_time.time()) + 60
         return True
 
     try:
         user = None
 
-        # Clerk JWT validation
         global jwks_client
         if not jwks_client:
             try:
@@ -135,8 +137,7 @@ def verify_credentials(request: Request, bearer_creds: HTTPAuthorizationCredenti
                 clerk_org_id = data.get("org_id")
                 
                 if clerk_org_id:
-                    # Deterministic UUID5 for zero-schema organization syncing
-                    CLERK_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_DNS, 'clerk.adopshun.com')
+                    CLERK_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_DNS, 'clerk.adopshun.com')  # deterministic: same Clerk org always maps to the same UUID
                     org_uuid = uuid.uuid5(CLERK_NAMESPACE, clerk_org_id)
                     org = db.query(Organization).filter(Organization.id == org_uuid).first()
                     if not org:
@@ -150,8 +151,7 @@ def verify_credentials(request: Request, bearer_creds: HTTPAuthorizationCredenti
                 else:
                     org = None
 
-                # Clerk JWT may include email if configured in the JWT template
-                clerk_email = data.get("email") or data.get("email_address") or ""
+                clerk_email = data.get("email") or data.get("email_address") or ""  # field name depends on Clerk JWT template config
 
                 user = db.query(User).filter(User.email == clerk_id).first()
                 if not user:
@@ -218,13 +218,11 @@ def require_scope(request: Request, scope: str):
 
 import time as _time
 import threading as _threading
-# ponytail: in-process sliding-window rate limiter, keyed by api_key id.
-# Ceiling: per-process (multiplies across uvicorn workers) and resets on restart.
-# Fine for a single-instance deployment; upgrade path is a shared Redis token bucket.
-_rate_buckets: dict = {}
+_rate_buckets: dict = {}  # per-process; resets on restart — Redis upgrade path for multi-worker
 _rate_lock = _threading.Lock()
 
-def enforce_api_rate_limit(key_id: str, limit_per_min: int):
+def enforce_api_rate_limit(key_id: str, limit_per_min: int) -> int:
+    """Records a hit; returns remaining requests in the window. Raises 429 if over."""
     now = _time.time()
     cutoff = now - 60
     with _rate_lock:
@@ -234,9 +232,85 @@ def enforce_api_rate_limit(key_id: str, limit_per_min: int):
             raise HTTPException(
                 status_code=429,
                 detail=f"Rate limit exceeded ({limit_per_min}/min for this API key)",
+                headers={"Retry-After": "60", "X-RateLimit-Limit": str(limit_per_min), "X-RateLimit-Remaining": "0"},
             )
         bucket.append(now)
         _rate_buckets[key_id] = bucket
+        return max(0, limit_per_min - len(bucket))
+
+
+_idem_cache: dict = {}  # per-process 24 h idempotency cache; Redis upgrade path for multi-worker
+_idem_lock = _threading.Lock()
+_IDEM_TTL = 24 * 3600
+
+def idem_get(cache_key):
+    with _idem_lock:
+        v = _idem_cache.get(cache_key)
+        if v and v[0] > _time.time():
+            return v[1]
+        if v:
+            _idem_cache.pop(cache_key, None)
+    return None
+
+def idem_set(cache_key, response: dict):
+    with _idem_lock:
+        _idem_cache[cache_key] = (_time.time() + _IDEM_TTL, response)
+
+
+def fire_webhook(org, event: dict):
+    """
+    Fire-and-forget HMAC-signed webhook for security events (e.g. BLOCK).
+    No-op if the org has no webhook configured. Never raises into the request.
+    """
+    url = getattr(org, "webhook_url", None) if org else None
+    if not url:
+        return
+    secret = (getattr(org, "webhook_secret", None) or "").encode()
+
+    def _send():
+        try:
+            import hmac, hashlib, requests
+            body = json.dumps(event).encode()
+            sig = hmac.new(secret, body, hashlib.sha256).hexdigest() if secret else ""
+            requests.post(
+                url,
+                data=body,
+                headers={"Content-Type": "application/json", "X-Adopshun-Signature": f"sha256={sig}"},
+                timeout=5,
+            )
+        except Exception as e:
+            logger.warning("Webhook delivery failed: %s", e)
+
+    _threading.Thread(target=_send, daemon=True).start()
+
+
+def purge_old_data(db, org_id=None) -> int:
+    """
+    Delete stat logs, sessions and messages older than each org's retention_days.
+    Scoped to one org when org_id is given. Skips orgs with no retention set.
+    ponytail: invoked on startup and on demand; the production path is a daily cron.
+    """
+    from datetime import datetime, timezone, timedelta
+    orgs = db.query(Organization).filter(Organization.id == org_id).all() if org_id else db.query(Organization).all()
+    deleted = 0
+    for org in orgs:
+        days = org.retention_days or 0
+        if days <= 0:
+            continue
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        deleted += db.query(StatLog).filter(
+            StatLog.org_id == org.id, StatLog.created_at < cutoff
+        ).delete(synchronize_session=False)
+        old = db.query(ChatSession).filter(
+            ChatSession.org_id == org.id, ChatSession.created_at < cutoff
+        ).all()
+        for s in old:
+            db.query(ChatMessage).filter(ChatMessage.session_id == s.id).delete(synchronize_session=False)
+        db.query(ChatSession).filter(
+            ChatSession.org_id == org.id, ChatSession.created_at < cutoff
+        ).delete(synchronize_session=False)
+    db.commit()
+    return deleted
 
 
 def validate_external_url(url: str):
@@ -286,7 +360,31 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def rate_limit_headers(request: Request, call_next):
+    response = await call_next(request)
+    if hasattr(request.state, "rl_limit"):
+        response.headers["X-RateLimit-Limit"] = str(request.state.rl_limit)
+        response.headers["X-RateLimit-Remaining"] = str(request.state.rl_remaining)
+        response.headers["X-RateLimit-Reset"] = str(request.state.rl_reset)
+    return response
+
 init_db()
+
+
+@app.on_event("startup")
+def _startup_retention_purge():
+    """Best-effort retention enforcement on boot. A daily cron is the real mechanism."""
+    try:
+        db = next(get_db())
+        n = purge_old_data(db)
+        if n:
+            print(f"Retention purge removed {n} stat-log rows.")
+        db.close()
+    except Exception as e:
+        print("Retention purge skipped:", e)
+
 
 def get_tier_config_helper(db, user):
     is_base = getattr(user, "is_base_user", True)
@@ -362,17 +460,22 @@ def read_root():
 async def check_message(request: Request, body: CheckRequest, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
     require_scope(request, "check")
     user = request.state.current_user
+
+    idem_key = None
+    if getattr(request.state, "via_api_key", False):
+        hdr = request.headers.get("Idempotency-Key")
+        if hdr:
+            idem_key = (str(getattr(request.state, "api_key_id", "")), hdr)
+            cached = idem_get(idem_key)
+            if cached is not None:
+                return JSONResponse(cached)
+
     tier_config, custom_labels = get_tier_config_helper(db, user)
-    # 1. Async Pipeline Check
     processed_text, detections, action = await asyncio.to_thread(pipeline.run, body.message, body.allowed_pii, body.ignored_values, tier_config, custom_labels)
 
-    # Programmatic API-key access (Path 3): return the PII verdict only, never call an LLM.
     if getattr(request.state, "via_api_key", False):
         block_set = tier_config["block"] if tier_config else TIER_BLOCK
-        # Log the call so API usage shows up in stats (audit/billing).
-        # Store only detection TYPES, never the raw PII values — the API path is
-        # stateless by design; retaining the caller's PII at rest would contradict it.
-        db.add(StatLog(
+        db.add(StatLog(  # store types only — never raw PII values on the API path
             user_id=user.id,
             org_id=user.org_id,
             session_id=None,
@@ -383,10 +486,13 @@ async def check_message(request: Request, body: CheckRequest, db: Session = Depe
             original_message=None,
         ))
         db.commit()
-        return JSONResponse({
+        tokenized, vault = tokenization.build_tokens(body.message, detections, block_set)  # vault returned to caller, never stored
+        resp = {
             "action": action,
             "was_redacted": action == "REDACT",
             "message": processed_text,
+            "tokenized": tokenized,
+            "vault": vault,
             "detections": [
                 {
                     "type": d.type,
@@ -398,7 +504,13 @@ async def check_message(request: Request, body: CheckRequest, db: Session = Depe
                 }
                 for d in detections
             ],
-        })
+        }
+        if idem_key is not None:
+            idem_set(idem_key, resp)
+        if action == "BLOCK" and user.org_id:
+            org = db.query(Organization).filter(Organization.id == user.org_id).first()
+            fire_webhook(org, {"event": "pii_blocked", "source": "api", "detected_types": [d.type for d in detections], "user_id": str(user.id)})
+        return JSONResponse(resp)
 
     import uuid
     try:
@@ -406,7 +518,6 @@ async def check_message(request: Request, body: CheckRequest, db: Session = Depe
     except:
         real_sess_id = None
 
-    # Log stat
     detected_types_list = [d.type for d in detections]
     flagged_sequences_list = [body.message[d.start:d.end] for d in detections]
     stat_log = StatLog(
@@ -436,7 +547,6 @@ async def check_message(request: Request, body: CheckRequest, db: Session = Depe
         blocked_types = [d.type for d in detections if d.type in block_set]
         primary_type = blocked_types[0] if blocked_types else "code"
 
-        # Persist blocked message so it survives session restore
         if real_sess_id:
             db_sess = db.query(ChatSession).filter(ChatSession.id == real_sess_id).first()
             if not db_sess:
@@ -449,6 +559,10 @@ async def check_message(request: Request, body: CheckRequest, db: Session = Depe
         
         blocked_redacted_types = [rt for rt in redacted_types_dicts if rt["type"] in block_set]
 
+        if user.org_id:
+            _org = db.query(Organization).filter(Organization.id == user.org_id).first()
+            fire_webhook(_org, {"event": "pii_blocked", "source": "chat", "detected_types": blocked_types, "user_id": str(user.id)})
+
         raise HTTPException(
             status_code=400,
             detail=BlockResponse(
@@ -458,7 +572,6 @@ async def check_message(request: Request, body: CheckRequest, db: Session = Depe
             ).model_dump()
         )
 
-    # 2. Database & LLM Integration
     org = db.query(Organization).filter(Organization.id == user.org_id).first() if user.org_id else None
     db_session = None
     if real_sess_id:
@@ -478,15 +591,12 @@ async def check_message(request: Request, body: CheckRequest, db: Session = Depe
         db.add(user_msg)
         db.commit()
 
-    # Resolve which LLM to use. The user may switch models mid-conversation, so we
-    # record the most recently used model on the session (used to restore the picker).
     resolved_model = llm_client.resolve_model(body.model, session=db_session, user=user, org=org)
     if db_session and db_session.model_used != resolved_model:
         db_session.model_used = resolved_model
         db.commit()
 
     async def generate():
-        # First chunk: Metadata
         metadata = {
             "type": "metadata",
             "action": action,
@@ -523,9 +633,7 @@ async def check_message(request: Request, body: CheckRequest, db: Session = Depe
 
                 model_msg = ChatMessage(session_id=real_sess_id, role="model", content=llm_reply)
                 db.add(model_msg)
-                # Record provider-reported token usage on the stat row (left NULL if the
-                # provider did not return usage — those calls are flagged in the dashboard)
-                if usage_out.get("total_tokens"):
+                if usage_out.get("total_tokens"):  # NULL when stream was interrupted — flagged in dashboard
                     stat_log.tokens = usage_out["total_tokens"]
                     db.add(stat_log)
                 db.commit()
@@ -559,14 +667,15 @@ def get_org_model_config(request: Request, db: Session = Depends(get_db), _: boo
         for mid, m in llm_client.SUPPORTED_MODELS.items()
     ]
     cfg = (getattr(org, "llm_config", None) or {}) if org else {}
-    # never leak the stored custom api key back to the client
-    custom = {k: v for k, v in cfg.items() if k != "api_key"} if cfg else None
+    custom = {k: v for k, v in cfg.items() if k != "api_key"} if cfg else None  # never return stored api_key to client
     return {
         "catalogue": catalogue,
         "default_model": getattr(org, "default_model", None) if org else None,
         "allowed_models": getattr(org, "allowed_models", None) or [] if org else [],
         "custom_endpoint": custom,
         "custom_configured": llm_client._custom_configured(org),
+        "webhook_url": getattr(org, "webhook_url", None) if org else None,
+        "webhook_configured": bool(getattr(org, "webhook_secret", None)) if org else False,
     }
 
 
@@ -589,17 +698,21 @@ def update_org_model_config(request: Request, body: OrgModelConfig, db: Session 
         existing = org.llm_config or {}
         org.llm_config = {
             "base_url": ce.base_url,
-            # keep the previous key if the admin left the field blank on edit
-            "api_key": ce.api_key if ce.api_key else existing.get("api_key"),
+            "api_key": ce.api_key if ce.api_key else existing.get("api_key"),  # blank on edit = keep existing
             "model_name": ce.model_name,
             "display_name": ce.display_name,
         }
+
+    if body.webhook_url is not None:
+        org.webhook_url = body.webhook_url or None
+    if body.webhook_secret:
+        org.webhook_secret = body.webhook_secret
+
     db.add(org)
     db.commit()
     return {"status": "updated"}
 
 
-# ── API key management ─────────────────────────────────────────────────────────
 VALID_API_SCOPES = {"check", "read:stats"}
 
 
@@ -660,7 +773,6 @@ def list_api_keys(request: Request, db: Session = Depends(get_db), _: bool = Dep
     user = request.state.current_user
     keys = db.query(ApiKey).filter(ApiKey.user_id == user.id).order_by(ApiKey.created_at.desc()).all()
 
-    # Per-key usage counts — two grouped queries cover every key (no N+1)
     totals, recent = {}, {}
     if keys:
         key_ids = [k.id for k in keys]
@@ -1020,13 +1132,10 @@ from typing import Optional
 from datetime import datetime
 
 def fetch_stats(db, current_user, is_base_user: bool, user_id=None, start_time=None, end_time=None):
-    # ponytail: resolve "me" to the current user's UUID string
     if user_id == "me":
         user_id = str(current_user.id)
 
     query = db.query(StatLog)
-    
-    # Isolation
     if is_base_user:
         query = query.filter(StatLog.user_id == current_user.id)
     else:
@@ -1049,9 +1158,7 @@ def fetch_stats(db, current_user, is_base_user: bool, user_id=None, start_time=N
     total = query.with_entities(func.count(StatLog.id)).scalar() or 0
     actions = query.with_entities(StatLog.action, func.count(StatLog.id)).group_by(StatLog.action).all()
 
-    # Provider-reported token usage. Rows left NULL are interactive chats whose
-    # provider did not return a usage figure (interrupted/failed) — we flag, not estimate.
-    total_tokens = query.with_entities(func.coalesce(func.sum(StatLog.tokens), 0)).scalar() or 0
+    total_tokens = query.with_entities(func.coalesce(func.sum(StatLog.tokens), 0)).scalar() or 0  # NULL = interrupted stream, flagged not estimated
     untracked = query.filter(
         StatLog.tokens.is_(None),
         StatLog.action != "BLOCK",
@@ -1127,21 +1234,59 @@ def get_user_stats(request: Request, user_id: str, start_time: Optional[datetime
     is_base_user = getattr(request.state, "is_base_user", True)
     return fetch_stats(db, current_user, is_base_user, user_id, start_time, end_time)
 
+@app.get("/api/v1/admin/logs/export")
+def export_audit_log(request: Request, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
+    """Download the audit trail as CSV, scoped to the caller's org (or self for solo users)."""
+    import csv, io
+    current_user = request.state.current_user
+    is_base_user = getattr(request.state, "is_base_user", True)
+
+    q = db.query(StatLog)
+    if is_base_user:
+        q = q.filter(StatLog.user_id == current_user.id)
+    else:
+        q = q.filter(StatLog.org_id == current_user.org_id)
+    logs = q.order_by(StatLog.created_at.desc()).limit(10000).all()
+
+    def _list(v):
+        if isinstance(v, str):
+            try:
+                v = json.loads(v)
+            except Exception:
+                return ""
+        return ", ".join(v) if isinstance(v, list) else ""
+
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["timestamp", "user_id", "action", "detected_types", "flagged_sequences", "via_api_key"])
+    for log in logs:
+        w.writerow([
+            log.created_at.isoformat() if log.created_at else "",
+            str(log.user_id),
+            log.action,
+            _list(log.detected_types),
+            _list(log.flagged_sequences),
+            "yes" if log.api_key_id else "no",
+        ])
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=adopshun_audit_log.csv"},
+    )
+
+
 @app.get("/api/v1/admin/logs/{user_id}")
 def get_user_logs(request: Request, user_id: str, limit: int = 50, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
     current_user = request.state.current_user
     is_base_user = getattr(request.state, "is_base_user", True)
     
-    # ponytail: handle keyword scopes for base and org users simply
     if is_base_user:
-        # Base users are strictly isolated to their own logs
         logs = db.query(StatLog).filter(StatLog.user_id == current_user.id).order_by(StatLog.created_at.desc()).limit(limit).all()
     else:
-        # Org users
         if user_id == "me":
             logs = db.query(StatLog).filter(StatLog.user_id == current_user.id).order_by(StatLog.created_at.desc()).limit(limit).all()
         elif user_id == "default_user":
-            # Return org-wide logs
             logs = db.query(StatLog).filter(StatLog.org_id == current_user.org_id).order_by(StatLog.created_at.desc()).limit(limit).all()
         else:
             target_user = _resolve_org_user(user_id, current_user, db)
@@ -1179,6 +1324,17 @@ def get_user_logs(request: Request, user_id: str, limit: int = 50, db: Session =
             "created_at": log.created_at.isoformat()
         })
     return result_logs
+
+
+@app.post("/api/v1/admin/retention/purge")
+def trigger_retention_purge(request: Request, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
+    """Manually enforce retention now. Org admins purge only their own org."""
+    current_user = request.state.current_user
+    is_base_user = getattr(request.state, "is_base_user", True)
+    if is_base_user:
+        return {"status": "skipped", "reason": "retention is an organisation policy"}
+    deleted = purge_old_data(db, org_id=current_user.org_id)
+    return {"status": "ok", "deleted_stat_logs": deleted}
 
 
 @app.get("/api/v1/patterns")
@@ -1545,14 +1701,12 @@ async def import_custom_labels_xlsx_preview(request: Request, file: UploadFile =
         
         words = [w.strip() for w in words_str.split(",")] if words_str else []
         
-        # Determine if it's new
         if is_base_user:
             existing = db.query(CustomLabel).filter(CustomLabel.name == name, CustomLabel.user_id == current_user.id).first()
         else:
             existing = db.query(CustomLabel).filter(CustomLabel.name == name, CustomLabel.org_id == current_user.org_id).first()
         is_new = existing is None
         
-        # If tier is missing, use Gemini to strictly predict it
         if not tier or tier not in ["tier_block", "tier_redact", "tier_audit"]:
             if client:
                 try:
@@ -1613,9 +1767,7 @@ def import_custom_labels_xlsx_confirm(request: Request, payload: ImportConfirmPa
         if existing:
             existing.description = description
             existing.tier = tier
-            # Only overwrite dictionary words if the import actually provided some,
-            # so that a Labels-only export (blank D column) doesn't wipe existing words.
-            if words:
+            if words:  # blank D column on import must not wipe existing dictionary words
                 existing.dictionary_words = json.dumps(words)
         else:
             regex_pattern = ""
@@ -1664,14 +1816,11 @@ async def upload_document(
     user = request.state.current_user
     tier_config, custom_labels = get_tier_config_helper(db, user)
 
-    # Reject oversized uploads early (before reading the whole body into memory).
-    # Default matches the nginx client_max_body_size (50MB) so the two layers agree.
-    max_bytes = int(os.getenv("MAX_UPLOAD_MB", "50")) * 1024 * 1024
+    max_bytes = int(os.getenv("MAX_UPLOAD_MB", "50")) * 1024 * 1024  # must match nginx client_max_body_size
     content_length = request.headers.get("content-length")
     if content_length and int(content_length) > max_bytes:
         raise HTTPException(status_code=413, detail=f"File too large. Maximum size is {max_bytes // (1024 * 1024)}MB.")
 
-    # Save the uploaded file temporarily
     suffix = os.path.splitext(file.filename)[1] if file.filename else ".tmp"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         tmp_path = tmp.name
@@ -1683,8 +1832,7 @@ async def upload_document(
         tmp.write(content)
         
     try:
-        # Run extraction/OCR off the event loop — it's CPU-heavy and blocking
-        extracted_text = await asyncio.to_thread(extract_text, tmp_path)
+        extracted_text = await asyncio.to_thread(extract_text, tmp_path)  # OCR is CPU-heavy; keep off the event loop
     finally:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
@@ -1698,7 +1846,6 @@ async def upload_document(
             )
         raise HTTPException(status_code=400, detail="Could not extract text from document, or document was empty.")
         
-    # Process the extracted text using the standard pipeline
     processed_text, detections, action = await asyncio.to_thread(pipeline.run, extracted_text, [], [], tier_config, custom_labels)
     
     import uuid
@@ -1709,7 +1856,18 @@ async def upload_document(
 
     detected_types_list = [d.type for d in detections]
     flagged_sequences_list = [extracted_text[d.start:d.end] for d in detections]
-    
+
+    if real_sess_id:
+        db_sess = db.query(ChatSession).filter(ChatSession.id == real_sess_id).first()
+        if not db_sess:
+            db_sess = ChatSession(
+                id=real_sess_id,
+                user_id=user.id,
+                org_id=user.org_id,
+                title=f"Doc: {(file.filename or 'upload')[:40]}"
+            )
+            db.add(db_sess)
+
     stat_log = StatLog(
         user_id=user.id,
         org_id=user.org_id,
@@ -1720,7 +1878,7 @@ async def upload_document(
     )
     db.add(stat_log)
     db.commit()
-    
+
     redacted_types = [
         RedactedType(type=d.type, subtype=d.subtype, confidence=d.confidence, value=extracted_text[d.start:d.end])
         for d in detections
@@ -1739,11 +1897,16 @@ async def upload_document(
             blocked_types=blocked_redacted_types
         )
 
+    block_set = tier_config["block"] if tier_config else TIER_BLOCK
+    tokenized, vault = tokenization.build_tokens(extracted_text, detections, block_set)
+
     return CheckResult(
         action=action,
         was_redacted=(action == "REDACT"),
         message=processed_text,
-        redacted_types=redacted_types
+        redacted_types=redacted_types,
+        tokenized=tokenized,
+        vault=vault,
     )
 
 

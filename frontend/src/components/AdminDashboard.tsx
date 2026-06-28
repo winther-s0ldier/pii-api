@@ -2,7 +2,7 @@
 import { useAuth } from '@/lib/useDevAuth';
 
 import React, { useState, useEffect } from 'react';
-import { Shield, Users, Activity, Settings, Save, AlertCircle, Eye, EyeOff, Clock, List, MessageSquare, X } from 'lucide-react';
+import { Shield, Users, Activity, Settings, Save, AlertCircle, Eye, EyeOff, Clock, List, MessageSquare, X, Download } from 'lucide-react';
 import { driver } from "driver.js";
 import "driver.js/dist/driver.css";
 
@@ -41,13 +41,11 @@ export default function AdminDashboard() {
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const searchRef = React.useRef<HTMLDivElement>(null);
 
-  // State to track which sequences are unmasked
   const [unmaskedSequences, setUnmaskedSequences] = useState<Record<string, boolean>>({});
 
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [selectedLogMessage, setSelectedLogMessage] = useState<string | null>(null);
 
-  // ponytail: set configUserId dynamically based on role type
   useEffect(() => {
     if (isLoaded) {
       setConfigUserId(!orgId ? 'me' : '');
@@ -55,12 +53,10 @@ export default function AdminDashboard() {
     }
   }, [isLoaded, orgId]);
 
-  // Auth is handled by the admin layout — mark as authenticated on mount
   useEffect(() => {
     setIsAuthenticated(true);
   }, []);
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
@@ -107,6 +103,24 @@ export default function AdminDashboard() {
     const end = new Date();
     const start = new Date(end.getTime() - hours * 60 * 60 * 1000);
     return `?start_time=${start.toISOString()}&end_time=${end.toISOString()}`;
+  };
+
+  const exportAuditLog = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/admin/logs/export`, {
+        headers: { 'Authorization': `Bearer ${await getToken()}` }
+      });
+      if (!res.ok) return;
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'adopshun_audit_log.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error('Audit export failed', e);
+    }
   };
 
   const fetchGlobalStats = async () => {
@@ -233,7 +247,6 @@ export default function AdminDashboard() {
     if (unmaskedSequences[key]) {
       return <span className="font-mono text-red-600 bg-red-50 px-1 rounded">{text}</span>;
     }
-    // Simple mask
     if (text.length <= 4) return <span className="font-mono text-gray-500">***</span>;
     const masked = text.substring(0, 2) + '*'.repeat(Math.max(3, text.length - 4)) + text.substring(text.length - 2);
     return <span className="font-mono text-gray-500">{masked}</span>;
@@ -254,15 +267,24 @@ export default function AdminDashboard() {
             <h2 className="text-lg font-semibold flex items-center gap-2">
               <Activity size={18} /> {!orgId ? 'Security Statistics' : 'Global Security Statistics'}
             </h2>
-            <div className="flex items-center gap-2 mt-4 md:mt-0 bg-[#FAFAFA] p-1.5 rounded-lg border border-[#EAEAEA]">
-              <Clock size={14} className="text-[#888888] ml-2" />
-              <select 
-                className="bg-transparent text-[13px] font-medium outline-none py-1 px-2 text-[#111111] cursor-pointer"
-                value={globalTimeWindow}
-                onChange={e => setGlobalTimeWindow(Number(e.target.value))}
+            <div className="flex items-center gap-2 mt-4 md:mt-0">
+              <button
+                onClick={exportAuditLog}
+                className="flex items-center gap-1.5 text-[13px] font-medium px-3 py-2 rounded-lg border border-[#EAEAEA] bg-white hover:bg-[#FAFAFA] transition-colors"
+                title="Download the audit trail as CSV"
               >
-                {TIME_WINDOWS.map(w => <option key={w.label} value={w.hours}>{w.label}</option>)}
-              </select>
+                <Download size={14} /> Export Audit Log
+              </button>
+              <div className="flex items-center gap-2 bg-[#FAFAFA] p-1.5 rounded-lg border border-[#EAEAEA]">
+                <Clock size={14} className="text-[#888888] ml-2" />
+                <select
+                  className="bg-transparent text-[13px] font-medium outline-none py-1 px-2 text-[#111111] cursor-pointer"
+                  value={globalTimeWindow}
+                  onChange={e => setGlobalTimeWindow(Number(e.target.value))}
+                >
+                  {TIME_WINDOWS.map(w => <option key={w.label} value={w.hours}>{w.label}</option>)}
+                </select>
+              </div>
             </div>
           </div>
           

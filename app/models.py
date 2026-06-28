@@ -23,6 +23,8 @@ class OrgModelConfig(BaseModel):
     default_model: Optional[str] = None
     allowed_models: List[str] = Field(default_factory=list)
     custom_endpoint: Optional[CustomEndpoint] = None
+    webhook_url: Optional[str] = None
+    webhook_secret: Optional[str] = None
 
 
 class ApiKeyCreate(BaseModel):
@@ -81,6 +83,8 @@ class CheckResult(BaseModel):
     was_redacted: bool
     message: str
     redacted_types: List[RedactedType] = []
+    tokenized: Optional[str] = None          # value-specific token form (for reversible tokenisation)
+    vault: Optional[Dict[str, str]] = None   # token -> real value, held only by the browser
 
 class BlockResult(BaseModel):
     status: str = "blocked"

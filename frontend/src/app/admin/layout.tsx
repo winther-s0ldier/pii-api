@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Shield, LayoutDashboard, BookOpen, Users, Cpu, Key } from 'lucide-react';
+import { Shield, LayoutDashboard, BookOpen, Users, Cpu, Key, ArrowLeft } from 'lucide-react';
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/useDevAuth';
@@ -102,6 +102,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             </>
           )}
         </nav>
+        <div className="p-4 border-t border-[#EAEAEA]">
+          <Link
+            href="/"
+            className="flex items-center gap-2 px-3 py-2 text-sm text-[#444444] hover:bg-[#F5F5F5] hover:text-[#111111] rounded-md transition-colors"
+          >
+            <ArrowLeft size={16} />
+            <span className="font-medium">Back to Chat</span>
+          </Link>
+        </div>
       </aside>
       <main className="flex-1 overflow-auto bg-[#FAFAFA]">
         {children}

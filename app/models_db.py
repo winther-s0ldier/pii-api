@@ -60,6 +60,8 @@ class Organization (Base ):
     allowed_models =Column (JSONB ,nullable =False ,default =list )
     default_model =Column (String (100 ))
     llm_config =Column (JSONB )
+    webhook_url =Column (String (500 ))
+    webhook_secret =Column (String (100 ))
     monthly_token_budget =Column (Integer )
     rate_limit_per_user_per_day =Column (Integer )
     retention_days =Column (Integer ,nullable =False ,default =90 )
@@ -78,7 +80,7 @@ class User (Base ):
     )
 
     id =Column (UUID (as_uuid =True ),primary_key =True ,default =uuid .uuid4 )
-    org_id =Column (UUID (as_uuid =True ),ForeignKey ("organizations.id",ondelete ="RESTRICT"),nullable =False )
+    org_id =Column (UUID (as_uuid =True ),ForeignKey ("organizations.id",ondelete ="RESTRICT"))  # nullable: solo/base users have no org
     email =Column (String (255 ))
     employee_id =Column (String (255 ))
     password_hash =Column (String (255 ),nullable =False )
