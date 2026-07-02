@@ -5,13 +5,13 @@ from app.config import TIER_BLOCK, TIER_REDACT, TIER_AUDIT, get_block_warning
 import requests
 import os
 import logging
-import functools
 import json
 
 logger = logging.getLogger(__name__)
 
-@functools.lru_cache(maxsize=256)
 def _hf_detect(url: str, text: str) -> str:
+    # ponytail: lru_cache removed — keying on raw text stored PII (SSNs, card numbers)
+    # in process memory across requests; cross-user data exposure risk
     res = requests.post(url + "/detect", json={"text": text}, timeout=60)
     if res.status_code != 200:
         raise RuntimeError(f"HF {res.status_code}")
@@ -131,19 +131,15 @@ def run(text: str, allowed_pii: List[str] = None, ignored_values: List[str] = No
                 for w in words:
                     if not w.strip(): continue
                     w_lower = w.strip().lower()
-                    start = 0
-                    while True:
-                        start = text_lower.find(w_lower, start)
-                        if start == -1: break
+                    for match in re.finditer(r'\b' + re.escape(w_lower) + r'\b', text_lower):
                         all_detections.append(Detection(
-                            start=start,
-                            end=start + len(w_lower),
+                            start=match.start(),
+                            end=match.end(),
                             type=cl.name,
                             subtype="custom_dict",
                             confidence="high",
                             engine="custom"
                         ))
-                        start += len(w_lower)
             except Exception: pass
     
     if tier_config is None:

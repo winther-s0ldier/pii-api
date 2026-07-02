@@ -46,7 +46,8 @@ security_bearer = HTTPBearer(auto_error=False)
 CLERK_JWKS_URL = os.getenv("CLERK_JWKS_URL", "https://rapid-hyena-22.clerk.accounts.dev/.well-known/jwks.json")
 try:
     jwks_client = PyJWKClient(CLERK_JWKS_URL, cache_keys=True, lifespan=3600)
-except:
+except Exception as e:
+    logger.critical("JWKS client failed to initialise — all JWT auth will fail: %s", e)
     jwks_client = None
 
 _GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip('"').strip("'")
@@ -54,6 +55,29 @@ _gemini_client = genai.Client(api_key=_GEMINI_API_KEY) if _GEMINI_API_KEY else N
 
 
 _NOAUTH_DEV = os.getenv("NOAUTH_DEV", "").lower() in ("1", "true", "yes")
+if _NOAUTH_DEV and os.getenv("ENVIRONMENT", "").lower() == "production":
+    raise RuntimeError("NOAUTH_DEV must not be enabled in production")
+
+
+def _validate_regex_safe(pattern: str, timeout: float = 0.5) -> None:
+    """Compile and probe a regex for catastrophic backtracking (ReDoS) before saving."""
+    import re as _re, threading
+    try:
+        compiled = _re.compile(pattern)
+    except _re.error as e:
+        raise HTTPException(status_code=400, detail=f"Invalid regex pattern: {e}")
+    done = []
+    def _probe():
+        try:
+            compiled.search("a" * 100 + "!")
+            done.append(True)
+        except Exception:
+            done.append(False)
+    t = threading.Thread(target=_probe, daemon=True)
+    t.start()
+    t.join(timeout)
+    if not done:
+        raise HTTPException(status_code=400, detail="Regex pattern timed out — potential ReDoS risk. Simplify the pattern.")
 
 def verify_credentials(request: Request, bearer_creds: HTTPAuthorizationCredentials = Depends(security_bearer), db: Session = Depends(get_db)):
     from app.models_db import Organization, User
@@ -130,7 +154,7 @@ def verify_credentials(request: Request, bearer_creds: HTTPAuthorizationCredenti
                     signing_key.key,
                     algorithms=["RS256"],
                     options={"verify_aud": False},
-                    leeway=600
+                    leeway=30
                 )
                 import uuid
                 clerk_id = data.get("sub")
@@ -184,7 +208,7 @@ def verify_credentials(request: Request, bearer_creds: HTTPAuthorizationCredenti
                 raise
             except Exception as e:
                 logger.error("Clerk JWT Decode Error: %s", e, exc_info=True)
-                raise HTTPException(status_code=401, detail=f"Invalid Clerk Token: {str(e)}")
+                raise HTTPException(status_code=401, detail="Authentication failed")
                 
         if not user:
             print("Auth Failed: User not found or bearer token missing.")
@@ -704,6 +728,8 @@ def update_org_model_config(request: Request, body: OrgModelConfig, db: Session 
         }
 
     if body.webhook_url is not None:
+        if body.webhook_url:
+            validate_external_url(body.webhook_url)  # SSRF guard — same as LLM endpoint
         org.webhook_url = body.webhook_url or None
     if body.webhook_secret:
         org.webhook_secret = body.webhook_secret
@@ -941,28 +967,39 @@ class BlockedMessageSave(_BaseModel):
     blocked_types: Optional[list] = None
 
 @app.post("/api/v1/sessions/save-blocked")
+@limiter.limit("20/minute")
 def save_blocked_message(request: Request, body: BlockedMessageSave, db: Session = Depends(get_db), _: bool = Depends(verify_credentials)):
     user = request.state.current_user
+    is_base = getattr(request.state, "is_base_user", True)
+
     db_sess = db.query(ChatSession).filter(ChatSession.id == body.session_id).first()
-    if not db_sess:
+    if db_sess:
+        # ownership check — base users own their session; org users must share the same org
+        if is_base and db_sess.user_id != user.id:
+            raise HTTPException(status_code=403, detail="Access denied")
+        if not is_base and db_sess.org_id != user.org_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+    else:
         title = body.message[:30] + "..." if len(body.message) > 30 else body.message
         db_sess = ChatSession(id=body.session_id, user_id=user.id, org_id=user.org_id, title=title)
         db.add(db_sess)
         db.commit()
+
     blocked_msg = ChatMessage(session_id=body.session_id, role="blocked", content=body.message)
     db.add(blocked_msg)
     if body.model_explanation:
         model_msg = ChatMessage(session_id=body.session_id, role="model", content=body.model_explanation)
         db.add(model_msg)
+    # use only type labels from client — do not trust raw values; real values were already
+    # captured server-side in the StatLog created by /check
     detected = [t.get("type", "") for t in (body.blocked_types or []) if isinstance(t, dict)]
-    flagged = [t.get("value", "") for t in (body.blocked_types or []) if isinstance(t, dict)]
     db.add(StatLog(
         user_id=user.id,
         org_id=user.org_id,
         session_id=body.session_id,
         action="BLOCK",
         detected_types=json.dumps(detected),
-        flagged_sequences=json.dumps(flagged),
+        flagged_sequences=json.dumps([]),
         original_message=body.message,
     ))
     db.commit()
@@ -1338,7 +1375,7 @@ def trigger_retention_purge(request: Request, db: Session = Depends(get_db), _: 
 
 
 @app.get("/api/v1/patterns")
-def list_patterns():
+def list_patterns(_: bool = Depends(verify_credentials)):
     return {
         "stages": [
             "regex_recognisers",
@@ -1469,6 +1506,9 @@ def create_custom_label(request: Request, label: CustomLabelCreate, db: Session 
             dump_data["regex_pattern"] = response.text.strip().strip('`').strip()
         except Exception as e:
             print("Gemini Regex Generation Failed:", e)
+
+    if dump_data.get("regex_pattern"):
+        _validate_regex_safe(dump_data["regex_pattern"])
             
     db_label = CustomLabel(
         name=dump_data.get("name"),
@@ -1803,6 +1843,38 @@ from app.pipeline.document_stage import extract_text
 import tempfile
 import os
 
+_MAGIC_BYTES: dict[str, bytes] = {
+    ".pdf":  b"%PDF",
+    ".docx": b"PK\x03\x04",
+    ".xlsx": b"PK\x03\x04",
+    ".pptx": b"PK\x03\x04",
+    ".jpg":  b"\xff\xd8",
+    ".jpeg": b"\xff\xd8",
+    ".png":  b"\x89PNG",
+    ".bmp":  b"BM",
+    ".gif":  b"GIF8",
+    ".tiff": b"II*\x00",
+    ".tif":  b"II*\x00",
+    ".webp": b"RIFF",
+}
+_UPLOAD_FLAG: dict[str, str] = {
+    ".pdf":  "can_upload_pdf",
+    ".jpg":  "can_upload_image", ".jpeg": "can_upload_image",
+    ".png":  "can_upload_image", ".bmp":  "can_upload_image",
+    ".tiff": "can_upload_image", ".tif":  "can_upload_image",
+    ".webp": "can_upload_image",
+    ".csv":  "can_upload_csv",
+    ".docx": "can_upload_docx",
+}
+
+def _validate_upload(content: bytes, suffix: str, user) -> None:
+    magic = _MAGIC_BYTES.get(suffix)
+    if magic and not content[:len(magic)] == magic:
+        raise HTTPException(status_code=415, detail="File content does not match its extension.")
+    flag = _UPLOAD_FLAG.get(suffix)
+    if flag and not getattr(user, flag, True):
+        raise HTTPException(status_code=403, detail="Your account is not permitted to upload this file type.")
+
 @app.post("/api/v1/document/upload", response_model=Union[CheckResult, BlockResult])
 @limiter.limit("10/minute")
 async def upload_document(
@@ -1821,14 +1893,18 @@ async def upload_document(
     if content_length and int(content_length) > max_bytes:
         raise HTTPException(status_code=413, detail=f"File too large. Maximum size is {max_bytes // (1024 * 1024)}MB.")
 
-    suffix = os.path.splitext(file.filename)[1] if file.filename else ".tmp"
+    _ALLOWED_EXTS = {'.pdf', '.docx', '.xlsx', '.pptx', '.txt', '.csv', '.md',
+                     '.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.webp'}
+    safe_filename = os.path.basename(file.filename or "upload")
+    suffix = os.path.splitext(safe_filename)[1].lower() if safe_filename else ".tmp"
+    if suffix not in _ALLOWED_EXTS:
+        raise HTTPException(status_code=415, detail=f"Unsupported file type '{suffix}'. Allowed: pdf, docx, xlsx, pptx, txt, csv, images.")
+    content = await file.read()
+    if len(content) > max_bytes:
+        raise HTTPException(status_code=413, detail=f"File too large. Maximum size is {max_bytes // (1024 * 1024)}MB.")
+    _validate_upload(content, suffix, user)
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         tmp_path = tmp.name
-        content = await file.read()
-        if len(content) > max_bytes:
-            tmp.close()
-            os.remove(tmp_path)
-            raise HTTPException(status_code=413, detail=f"File too large. Maximum size is {max_bytes // (1024 * 1024)}MB.")
         tmp.write(content)
         
     try:
@@ -1851,7 +1927,7 @@ async def upload_document(
     import uuid
     try:
         real_sess_id = uuid.UUID(session_id)
-    except:
+    except (ValueError, AttributeError):
         real_sess_id = None
 
     detected_types_list = [d.type for d in detections]
@@ -1864,7 +1940,7 @@ async def upload_document(
                 id=real_sess_id,
                 user_id=user.id,
                 org_id=user.org_id,
-                title=f"Doc: {(file.filename or 'upload')[:40]}"
+                title=f"Doc: {safe_filename[:40]}"
             )
             db.add(db_sess)
 

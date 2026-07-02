@@ -12,7 +12,7 @@ import hashlib
 
 
 def _short_hash(value: str) -> str:
-    return hashlib.sha1(value.encode("utf-8")).hexdigest()[:6]
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:6]
 
 
 def _token_for(type_: str, value: str) -> str:

@@ -14,6 +14,5 @@ clerk-backend-api
 PyJWT[crypto]
 passlib[bcrypt]
 python-dotenv
-easyocr
+rapidocr-onnxruntime
 pymupdf
-torch

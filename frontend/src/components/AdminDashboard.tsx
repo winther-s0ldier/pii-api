@@ -72,8 +72,11 @@ export default function AdminDashboard() {
     fetchCustomLabels();
   }, [globalTimeWindow]);
 
+  const isSafeUserId = (id: string) =>
+    /^[a-zA-Z0-9@._+\-]{1,254}$/.test(id);
+
   useEffect(() => {
-    if (configUserId) {
+    if (configUserId && isSafeUserId(configUserId)) {
       fetchUserStats();
       fetchConfig();
       fetchLogs();

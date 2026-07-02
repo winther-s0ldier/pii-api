@@ -3,59 +3,75 @@ import logging
 import threading
 import numpy as np
 from markitdown import MarkItDown
+from concurrent.futures import ThreadPoolExecutor
 
 logger = logging.getLogger(__name__)
 
-# ponytail: lazy singleton — EasyOCR takes ~3s to load, only pay that cost once.
-# Lock guards against two concurrent first-uploads both building a reader.
-_ocr_reader = None
+# ponytail: lazy singleton — RapidOCR loads ONNX models once; ONNX InferenceSession is
+# thread-safe so the same engine handles parallel page calls without a lock.
+_ocr_engine = None
 _ocr_lock = threading.Lock()
 
-def _get_ocr_reader():
-    global _ocr_reader
-    if _ocr_reader is None:
+
+def _get_ocr_engine():
+    global _ocr_engine
+    if _ocr_engine is None:
         with _ocr_lock:
-            if _ocr_reader is None:  # re-check inside the lock
-                import easyocr
-                import torch
-                _ocr_reader = easyocr.Reader(['en'], gpu=torch.cuda.is_available())
-                logger.info("EasyOCR reader loaded (gpu=%s)", torch.cuda.is_available())
-    return _ocr_reader
+            if _ocr_engine is None:
+                from rapidocr_onnxruntime import RapidOCR
+                _ocr_engine = RapidOCR()
+                logger.info("RapidOCR engine loaded")
+    return _ocr_engine
 
 
-def _ocr_image(file_path: str) -> str:
-    """Run EasyOCR on an image file."""
-    try:
-        reader = _get_ocr_reader()
-        return '\n'.join(reader.readtext(file_path, detail=0))
-    except Exception as e:
-        logger.error("EasyOCR image failed: %s", e)
+def _ocr_array(img: np.ndarray) -> str:
+    result, _ = _get_ocr_engine()(img)
+    if not result:
         return ""
+    return "\n".join(item[1] for item in result)
 
 
 def _ocr_pdf(file_path: str) -> str:
-    """Convert each PDF page to an image via pymupdf, then run EasyOCR."""
     try:
         import fitz
-        reader = _get_ocr_reader()
         doc = fitz.open(file_path)
-        pages_text = []
+        images = []
         for page in doc:
-            pix = page.get_pixmap(dpi=200)
-            img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
-            if pix.n == 4:
-                img = img[:, :, :3]
-            result = reader.readtext(img, detail=0)
-            if result:
-                pages_text.append('\n'.join(result))
+            # ponytail: text pages are fine at 150 DPI; image-only pages need 175 for accuracy
+            dpi = 150 if page.get_text().strip() else 175
+            pix = page.get_pixmap(dpi=dpi, colorspace=fitz.csGRAY)
+            img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width)
+            images.append(img)
         doc.close()
-        return '\n\n'.join(pages_text)
+
+        if not images:
+            return ""
+        if len(images) == 1:
+            return _ocr_array(images[0])
+
+        # ponytail: parallel OCR safe because ONNX Runtime sessions are thread-safe;
+        # ceiling: 4 workers — diminishing returns beyond 2 cores on t3.small
+        with ThreadPoolExecutor(max_workers=min(len(images), 4)) as ex:
+            results = list(ex.map(_ocr_array, images))
+        return "\n\n".join(r for r in results if r)
+
     except Exception as e:
-        logger.error("EasyOCR PDF failed: %s", e)
+        logger.error("RapidOCR PDF failed: %s", e)
         return ""
 
 
-_IMAGE_EXTS = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.webp'}
+def _ocr_image(file_path: str) -> str:
+    try:
+        result, _ = _get_ocr_engine()(file_path)
+        if not result:
+            return ""
+        return "\n".join(item[1] for item in result)
+    except Exception as e:
+        logger.error("RapidOCR image failed: %s", e)
+        return ""
+
+
+_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif", ".webp"}
 
 
 def extract_text(file_path: str) -> str:
@@ -63,10 +79,8 @@ def extract_text(file_path: str) -> str:
         logger.error("File not found: %s", file_path)
         return ""
 
-    # 1. Try MarkItDown — handles DOCX, XLSX, PPTX, text-based PDFs
     try:
-        result = MarkItDown().convert(file_path)
-        text = result.text_content or ""
+        text = MarkItDown().convert(file_path).text_content or ""
     except Exception as e:
         logger.error("MarkItDown failed for %s: %s", file_path, e)
         text = ""
@@ -74,15 +88,14 @@ def extract_text(file_path: str) -> str:
     if text.strip():
         return text
 
-    # 2. MarkItDown returned nothing — try OCR (local only, easyocr may not be installed)
     try:
-        import easyocr  # noqa: F401
+        from rapidocr_onnxruntime import RapidOCR  # noqa: F401
     except ImportError:
-        logger.warning("easyocr not installed — skipping OCR for %s", file_path)
+        logger.warning("rapidocr_onnxruntime not installed — skipping OCR for %s", file_path)
         return text
 
     ext = os.path.splitext(file_path)[1].lower()
-    if ext == '.pdf':
+    if ext == ".pdf":
         logger.info("Scanned PDF detected, running OCR: %s", file_path)
         return _ocr_pdf(file_path)
     if ext in _IMAGE_EXTS:
